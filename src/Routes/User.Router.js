@@ -3,7 +3,7 @@ import { Router } from "express";
 import { verifyToken } from "../Middlewares/verifytoken.js";
 // import { loginUserSchema ,addUserSchema} from "../Middlewares/validationSchemas.ts";
 // import {checkIndex} from "../Middlewares/checkIndex.ts"
-import { editUser, getAllUsers, getUserById ,deleteUser, register, login} from "../Modules/User/user.controller.js";
+import { editUser, getAllUsers, getUserById ,deleteUser, register, login,confirmEmail} from "../Modules/User/user.controller.js";
 // import { allowedTo } from "../Middlewares/allowedTo.ts";
 // import { Roles } from "../Utils/usersRoles.ts";
 // import {upload} from "../Middlewares/upload.ts";
@@ -14,6 +14,7 @@ router.get(("/"),verifyToken,getAllUsers);
 router.get("/:id",verifyToken,getUserById);
 router.post("/register",register);
 router.post("/login",login);
+router.post('/confirmEmail',verifyToken,confirmEmail)
 router.patch('/:id',verifyToken,editUser);
 router.delete('/:id',verifyToken,deleteUser);
 export default router 

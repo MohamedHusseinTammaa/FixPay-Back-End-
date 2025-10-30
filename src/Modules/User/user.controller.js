@@ -8,6 +8,13 @@ import * as httpStatus from "../../Utils/Http/httpStatusText.js";
 import * as httpMessage from "../../Utils/Http/HttpDataText.js";
 import { AppError } from "../../Utils/Errors/AppError.js";
 import * as Services from "./user.service.js";
+import { customAlphabet } from "nanoid";
+import {generateHash} from '../../Utils/Encrypt/hashing.js'
+import {OtpTypesEnum} from '../../Utils/enums/usersRoles.js'
+import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
+import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
+
+const generateOtp = customAlphabet('0123456789', 6)
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -16,7 +23,7 @@ const getAllUsers = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    
+
     const users = await Services.getAllUsersService();
 
     res.status(200).json({
@@ -50,15 +57,23 @@ const register = asyncWrapper(async (req, res, next) => {
 
     // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
-    
+
     let parsedDateOfBirth = dateOfBirth;
     if (dateOfBirth) {
         const [day, month, year] = dateOfBirth.split("-");
         parsedDateOfBirth = new Date(year, month - 1, day);
     }
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const otp = generateOtp()
+    const hashOtp = generateHash(otp)
+    console.log(otp);
+    const confirmationOtp = {
+        value: hashOtp,
+        expiresAt: new Date(Date.now() + 600000),
+        otpType: OtpTypesEnum.CONFIRMATION
+    }
+     localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
     const newUser = new User({
         name: {
             first: name.first,
@@ -77,7 +92,8 @@ const register = asyncWrapper(async (req, res, next) => {
             government: address.government,
             city: address.city,
             street: address.street
-        }
+        },
+        otp:confirmationOtp
     });
 
     try {
@@ -121,7 +137,21 @@ const login = asyncWrapper(async (req, res, next) => {
         details: null
     });
 });
-
+const confirmEmail = asyncWrapper(async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return next(
+            new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
+        );
+    }
+    const {otp}=req.body
+    const user= req.currentUser
+await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
+    res.status(200).json({
+        status: httpStatus.SUCCESS,
+        data: "Your Email is verified Now ",
+    });
+});
 const editUser = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -170,5 +200,6 @@ export {
     register,
     editUser,
     login,
-    deleteUser
+    deleteUser,
+    confirmEmail
 };

@@ -1,8 +1,8 @@
 import Jwt from "jsonwebtoken";
 import { AppError } from "../Utils/Errors/AppError.js";  // Update this path
 import * as httpStatus from "../Utils/Http/httpStatusText.js";  // Update this path
-
-export const verifyToken = (req, res, next) => {
+import blackListedTokenModel from '../Models/blackListedToken.model.js'
+export const verifyToken = async(req, res, next) => {
     try {
         const authHeader = req.headers["authorization"];
         if (!authHeader) {
@@ -27,6 +27,16 @@ export const verifyToken = (req, res, next) => {
         
         try {
             const decoded = Jwt.verify(token, secret);
+             const isSessionEnded = await blackListedTokenModel.findOne({ 
+                tokenId: decoded.jti 
+            });
+            
+            if (isSessionEnded) {
+                return res.status(401).json({
+                    status: "error",
+                    message: "your session is ended"
+                });
+            }
             req.currentUser = decoded;
             next();
         } catch (err) {

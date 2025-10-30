@@ -1,82 +1,10 @@
-import * as httpStatus from "../Utils/HttpStatusText.ts";
+// import * as httpStatus from "../Utils/HttpStatusText.ts";
 import validator from "validator";
-import { AppError } from "../Utils/AppError.ts";
+import { Roles } from "../Utils/enums/usersRoles.js";
+// import { AppError } from "../Utils/AppError.ts";
 
-// Schemas for express-validator
-export const createPostSchema = {
-    post: {
-        isString: {
-            errorMessage: "post must be string!"
-        },
-        notEmpty: {
-            errorMessage: "you need to write a post"
-        },
-        isLength: {
-            options: { min: 5, max: 300 },
-            errorMessage: "the length from 5-300 characters"
-        }
-    },
-    isAnonymous: {
-        isBoolean: {
-            errorMessage: "isAnonymous must be true or false"
-        }
-    }
-};
-export const createCommentSchema = {
-    post : {
-        notEmpty : {
-             errorMessage: "need the post id"
-        }
-    },
-    content: {
-        isString: {
-            errorMessage: "post must be string!"
-        },
-        notEmpty: {
-            errorMessage: "you need to write a post"
-        },
-        isLength: {
-            options: { min: 5, max: 300 },
-            errorMessage: "the length from 5-300 characters"
-        }
-    },
-    isAnonymous: {
-        isBoolean: {
-            errorMessage: "isAnonymous must be true or false"
-        }
-    }
-};
 
-export const postQuerySchema = {
-    writer: {
-        notEmpty: {
-            errorMessage: 'you need to enter a "first name"'
-        },
-        isString: {
-            errorMessage: "writer must be string!"
-        },
-        isLength: {
-            options: { min: 5, max: 32 },
-            errorMessage: "you must enter a writer from 5 to 32 chars"
-        }
-    },
-    limit: {
-        optional: true,
-        isInt: {
-            options: { min: 1, max: 20 },
-            errorMessage: "limit from 1 post to 20"
-        }
-    },
-    page: {
-        optional: true,
-        isInt: {
-            options: { min: 1, max: 20 },
-            errorMessage: "start from 1"
-        }
-    }
-};
-
-export const addUserSchema = {
+export const registerSchema = {
     "name.first": {
         isString: { errorMessage: "user's first name must be string!" },
         notEmpty: { errorMessage: 'you need to enter a "first name"' },
@@ -107,24 +35,47 @@ export const addUserSchema = {
     email: {
         isEmail: { errorMessage: "you need to enter Email format !" },
         notEmpty: { errorMessage: "you need to enter an Email !" },
-        isLength: { options: { min: 5, max: 32 }, errorMessage: "email must be from 5 to 32 chars" }
+        isLength: { options: { min: 5, max: 100 }, errorMessage: "email must be from 5 to 100 chars" }
     },
     password: {
         isString: { errorMessage: "password must be string!" },
         notEmpty: { errorMessage: "you need to enter a password !" },
-        isLength: { options: { min: 5, max: 32 }, errorMessage: "password must be from 5 to 32 chars" }
+        isLength: { options: { min: 8, max: 100 }, errorMessage: "password must be from 8 to 100 chars" }
+    },
+    role: {
+        optional: true,
+        isString: { errorMessage: "role must be string!" },
+        isIn: { options: [Object.values(Roles)], errorMessage: `role must be one of: ${Object.values(Roles).join(', ')}` }
+    },
+    ssn: {
+        notEmpty: { errorMessage: "you need to enter SSN" },
+        isNumeric: { errorMessage: "SSN must be numeric" }
+    },
+    "address.government": {
+        optional: true,
+        isString: { errorMessage: "government must be string!" }
+    },
+    "address.city": {
+        optional: true,
+        isString: { errorMessage: "city must be string!" }
+    },
+    "address.street": {
+        optional: true,
+        isString: { errorMessage: "street must be string!" }
     }
 };
 
-export const loginUserSchema = {
+export const loginSchema = {
     email: {
+        trim: true,
+        normalizeEmail: true,
         isEmail: { errorMessage: "you need to enter Email format !" },
         notEmpty: { errorMessage: "you need to enter an Email !" },
-        isLength: { options: { min: 5, max: 32 }, errorMessage: "email must be from 5 to 32 chars" }
+        isLength: { options: { min: 5, max: 100 }, errorMessage: "email must be from 5 to 100 chars" }
     },
     password: {
         isString: { errorMessage: "password must be string!" },
         notEmpty: { errorMessage: "you need to enter a password !" },
-        isLength: { options: { min: 5, max: 32 }, errorMessage: "password must be from 5 to 32 chars" }
+        isLength: { options: { min: 8, max: 100 }, errorMessage: "password must be from 8 to 100 chars" }
     }
 };

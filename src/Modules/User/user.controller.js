@@ -1,4 +1,4 @@
-import { validationResult } from "express-validator";
+import {validationResult } from "express-validator";
 import User from "../../Models/User.model.js";
 import Jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -60,7 +60,11 @@ const register = asyncWrapper(async (req, res, next) => {
     // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
 
-    const parsedDateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    let parsedDateOfBirth = dateOfBirth;
+    if (dateOfBirth) {
+        const [day, month, year] = dateOfBirth.split("-");
+        parsedDateOfBirth = new Date(year, month - 1, day);
+    }
 
     const isEmailExist =await User.findOne({filter:email})
     if(isEmailExist)
@@ -76,7 +80,7 @@ const register = asyncWrapper(async (req, res, next) => {
         expiresAt: new Date(Date.now() + 600000),
         otpType: OtpTypesEnum.CONFIRMATION
     }
-     localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
+    localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
     const newUser = new User({
         name: {
             first: name.first,
@@ -113,6 +117,10 @@ const register = asyncWrapper(async (req, res, next) => {
 
 const login = asyncWrapper(async (req, res, next) => {
     const { email, password } = req.body;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
+    }
     const user = await Services.loginService(email);
 
     if (!user) {
@@ -153,7 +161,6 @@ await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
         data: "Your Email is verified Now ",
     });
 });
-
 
 const logout = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -226,7 +233,6 @@ export {
     editUser,
     login,
     deleteUser,
-    confirmEmail
-    ,
+    confirmEmail,
     logout
 };

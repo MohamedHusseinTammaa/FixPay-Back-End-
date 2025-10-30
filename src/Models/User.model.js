@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import validator from "validator";
 import { Roles } from "../Utils/enums/usersRoles.js";
+import{OtpTypesEnum} from '../Utils/enums/usersRoles.js'
 const usersSchema = new mongoose.Schema({
     name: {
         first: String,
@@ -53,6 +54,17 @@ const usersSchema = new mongoose.Schema({
         city :String,
         street:String,
     }
+    ,
+    otp: {
+        value: String,
+        expiresAt: Date,
+        otpType: {
+            type:String,
+            enum:[...Object.values(OtpTypesEnum)]
+        }
+    }
+    ,
+    verifiedAt:Date
 });
 
 const User = mongoose.model("Users", usersSchema, "Users");

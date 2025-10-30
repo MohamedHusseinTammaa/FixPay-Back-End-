@@ -1,0 +1,38 @@
+import Jwt from "jsonwebtoken";
+import { AppError } from "../Utils/Errors/AppError.js";  // Update this path
+import * as httpStatus from "../Utils/Http/httpStatusText.js";  // Update this path
+
+export const verifyToken = (req, res, next) => {
+    try {
+        const authHeader = req.headers["authorization"];
+        if (!authHeader) {
+            return next(new AppError("The token is required", 401, httpStatus.FAIL));
+        }
+
+        if (!authHeader.startsWith("bearer ")) {
+            return next(new AppError("The token is invalid", 401, httpStatus.FAIL));
+        }
+
+        const parts = authHeader.split(" ");
+        if (parts.length !== 2 || !parts[1]) {
+            return next(new AppError("The token is invalid", 401, httpStatus.FAIL));
+        }
+
+        const token = parts[1];
+
+        const secret = process.env.JWT_KEY;
+        if (!secret) {
+            return next(new AppError("The server is not configured properly", 500, httpStatus.FAIL));
+        }
+        
+        try {
+            const decoded = Jwt.verify(token, secret);
+            req.currentUser = decoded;
+            next();
+        } catch (err) {
+            return next(new AppError("The token is invalid", 401, httpStatus.FAIL));
+        }
+    } catch (error) {
+        return next(new AppError("An error occurred while verifying the token", 500, httpStatus.FAIL));
+    }
+};

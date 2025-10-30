@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import validator from "validator";
-import { Roles } from "../../Utils/usersRoles.ts";
+import { Roles } from "../Utils/enums/usersRoles.js";
 const usersSchema = new mongoose.Schema({
     name: {
         first: String,
@@ -8,7 +8,6 @@ const usersSchema = new mongoose.Schema({
     },
     userName: {
         type: String,
-        required: true
     },
     dateOfBirth: {
         type: Date
@@ -21,13 +20,12 @@ const usersSchema = new mongoose.Schema({
     },
     email: {
         type: String,
-        required: true,
         unique: true,
         validate : [validator.isEmail,"field must be a valid email"]
     },
     password: {
         type: String,
-        required : true
+
     },
     createdAt: {
         type: Date,
@@ -36,7 +34,7 @@ const usersSchema = new mongoose.Schema({
     role:{
         type: String,
         enum : [...Object.values(Roles)],
-        default :Roles.USER
+        default :Roles.user
     },
     avatar :{
         type : String,
@@ -48,13 +46,12 @@ const usersSchema = new mongoose.Schema({
     },
     ssn : {
         type:Number,
-        required:true
+        unique: true
     },
     address :{
         government:String,
         city :String,
         street:String,
-        required:true
     }
 });
 

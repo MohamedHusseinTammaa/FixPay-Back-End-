@@ -13,6 +13,8 @@ import {generateHash} from '../../Utils/Encrypt/hashing.js'
 import {OtpTypesEnum} from '../../Utils/enums/usersRoles.js'
 import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
 import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
+import blackListedTokenModel from'../../Models/blackListedToken.model.js'
+import { v4 as uuidv4 } from 'uuid';
 
 const generateOtp = customAlphabet('0123456789', 6)
 
@@ -58,12 +60,13 @@ const register = asyncWrapper(async (req, res, next) => {
     // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
 
-    let parsedDateOfBirth = dateOfBirth;
-    if (dateOfBirth) {
-        const [day, month, year] = dateOfBirth.split("-");
-        parsedDateOfBirth = new Date(year, month - 1, day);
-    }
+    const parsedDateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
 
+    const isEmailExist =await User.findOne({filter:email})
+    if(isEmailExist)
+    {
+        return res.status(409).JSON({message:`${email} is Already Exist`})
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
     const otp = generateOtp()
     const hashOtp = generateHash(otp)
@@ -103,9 +106,7 @@ const register = asyncWrapper(async (req, res, next) => {
             data: user
         });
     } catch (err) {
-        if (err.code === 11000) {
-            return next(new AppError("The email is already signed", 400, httpStatus.FAIL));
-        }
+       
         next(err);
     }
 });
@@ -121,7 +122,7 @@ const login = asyncWrapper(async (req, res, next) => {
     const passwordMatched = await bcrypt.compare(password, user.password);
 
     if (passwordMatched) {
-        const token = Jwt.sign({ email: user.email, id: user.id, role: user.role }, process.env.JWT_KEY);
+        const token = Jwt.sign({ email: user.email, id: user.id, role: user.role ,jti: uuidv4()}, process.env.JWT_KEY);
         return res.status(200).json({
             status: httpStatus.SUCCESS,
             data: user.email,
@@ -152,6 +153,30 @@ await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
         data: "Your Email is verified Now ",
     });
 });
+
+
+const logout = asyncWrapper(async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return next(
+            new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
+        );
+    }
+    const token=req.currentUser
+    console.log({tokenJTI:token.jti});
+    
+  const data=  await blackListedTokenModel.create({
+    tokenId: req.currentUser.jti,
+    expiresAt: new Date(Date.now())
+});
+
+    res.status(200).json({
+        status: httpStatus.SUCCESS,
+        data: data,
+        message:"logged out successfully"
+    });
+});
+
 const editUser = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -202,4 +227,6 @@ export {
     login,
     deleteUser,
     confirmEmail
+    ,
+    logout
 };

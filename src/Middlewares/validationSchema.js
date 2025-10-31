@@ -47,9 +47,13 @@ export const registerSchema = {
         isString: { errorMessage: "role must be string!" },
         isIn: { options: [Object.values(Roles)], errorMessage: `role must be one of: ${Object.values(Roles).join(', ')}` }
     },
-    ssn: {
-        notEmpty: { errorMessage: "you need to enter SSN" },
-        isNumeric: { errorMessage: "SSN must be numeric" }
+   ssn: {
+    notEmpty: { errorMessage: "you need to enter SSN" },
+    isNumeric: { errorMessage: "SSN must be numeric" },
+    isLength: { 
+        options: { min: 9, max: 14 },
+        errorMessage: "SSN must be between 9 and 14 digits" 
+               } 
     },
     "address.government": {
         optional: true,

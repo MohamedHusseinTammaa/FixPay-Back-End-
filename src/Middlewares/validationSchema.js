@@ -30,7 +30,11 @@ export const registerSchema = {
     },
     phoneNumber: {
         notEmpty: { errorMessage: "you need to enter a phone number" },
-        isLength: { options: { min: 5, max: 32 }, errorMessage: "phone must be from 5 to 32 chars" }
+        isLength: { options: { min: 5, max: 32 }, errorMessage: "phone must be from 5 to 32 chars" },
+        isMobilePhone: {
+            options: ["ar-EG"],
+            errorMessage: "phone number must be a valid Egyptian mobile number"
+        }
     },
     email: {
         isEmail: { errorMessage: "you need to enter Email format !" },
@@ -47,10 +51,7 @@ export const registerSchema = {
         isString: { errorMessage: "role must be string!" },
         isIn: { options: [Object.values(Roles)], errorMessage: `role must be one of: ${Object.values(Roles).join(', ')}` }
     },
-    ssn: {
-        notEmpty: { errorMessage: "you need to enter SSN" },
-        isNumeric: { errorMessage: "SSN must be numeric" }
-    },
+   
     "address.government": {
         optional: true,
         isString: { errorMessage: "government must be string!" }

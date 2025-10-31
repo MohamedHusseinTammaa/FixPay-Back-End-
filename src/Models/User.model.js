@@ -9,6 +9,7 @@ const usersSchema = new mongoose.Schema({
     },
     userName: {
         type: String,
+        unique: true
     },
     dateOfBirth: {
         type: Date
@@ -46,8 +47,9 @@ const usersSchema = new mongoose.Schema({
         default : 5
     },
     ssn : {
-        type:Number,
-        unique: true
+        type: String,
+        unique: true,
+        sparse: true,
     },
     address :{
         government:String,

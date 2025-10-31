@@ -10,7 +10,7 @@ import { AppError } from "../../Utils/Errors/AppError.js";
 import * as Services from "./user.service.js";
 import { customAlphabet } from "nanoid";
 import {generateHash} from '../../Utils/Encrypt/hashing.js'
-import {OtpTypesEnum} from '../../Utils/enums/usersRoles.js'
+import {OtpTypesEnum, Roles} from '../../Utils/enums/usersRoles.js'
 import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
 import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
 import blackListedTokenModel from'../../Models/blackListedToken.model.js'
@@ -59,17 +59,13 @@ const register = asyncWrapper(async (req, res, next) => {
 
     // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
-
+    if(role===Roles.worker&&!ssn){
+        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL,"worker must add his ssn"));
+    }
     let parsedDateOfBirth = dateOfBirth;
     if (dateOfBirth) {
         const [day, month, year] = dateOfBirth.split("-");
         parsedDateOfBirth = new Date(year, month - 1, day);
-    }
-
-    const isEmailExist =await User.findOne({filter:email})
-    if(isEmailExist)
-    {
-        return res.status(409).JSON({message:`${email} is Already Exist`})
     }
     const hashedPassword = await bcrypt.hash(password, 10);
     const otp = generateOtp()
@@ -110,7 +106,10 @@ const register = asyncWrapper(async (req, res, next) => {
             data: user
         });
     } catch (err) {
-       
+       if(err.code===11000){
+
+        return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
+       }
         next(err);
     }
 });

@@ -56,8 +56,8 @@ export const registerSchema = {
         notEmpty: { errorMessage: "you need to enter SSN" },
         isNumeric: { errorMessage: "SSN must be numeric" },
         isLength: { 
-            options: { min: 9, max: 14 },
-            errorMessage: "SSN must be between 9 and 14 digits" 
+            options: { min: 14, max: 14 },
+            errorMessage: "SSN must be 14 digits" 
         }
     },
     "address.government": {

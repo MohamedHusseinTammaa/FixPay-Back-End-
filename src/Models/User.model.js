@@ -47,7 +47,7 @@ const usersSchema = new mongoose.Schema({
         default : 5
     },
     ssn : {
-        type: String,
+        type: Number,
         unique: true,
         sparse: true,
     },

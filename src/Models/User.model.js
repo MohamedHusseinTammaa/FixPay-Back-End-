@@ -66,7 +66,10 @@ const usersSchema = new mongoose.Schema({
         }
     }
     ,
-    verifiedAt:Date
+    verifiedAt:{
+        type:Date,
+        default:Date.now()
+    }
 });
 
 const User = mongoose.model("Users", usersSchema, "Users");

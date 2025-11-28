@@ -15,7 +15,7 @@ import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
 import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
 import blackListedTokenModel from'../../Models/blackListedToken.model.js'
 import { v4 as uuidv4 } from 'uuid';
-
+import {CompareHash} from '../../Utils/Encrypt/hashing.js'
 const generateOtp = customAlphabet('0123456789', 6)
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
@@ -76,7 +76,7 @@ const register = asyncWrapper(async (req, res, next) => {
         expiresAt: new Date(Date.now() + 600000),
         otpType: OtpTypesEnum.CONFIRMATION
     }
-    localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
+    
     const newUser = new User({
         name: {
             first: name.first,
@@ -112,6 +112,7 @@ const register = asyncWrapper(async (req, res, next) => {
        }
         next(err);
     }
+    localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
 });
 
 const login = asyncWrapper(async (req, res, next) => {
@@ -153,11 +154,24 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
         );
     }
     const {otp}=req.body
-    const user= req.currentUser
-await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
-    res.status(200).json({
+    const user= await User.findById(req.currentUser.id)
+    const otpValue = user.otp?.value
+
+    console.log({user});
+    
+    const isOtpMatch= await CompareHash(otp,otpValue
+    )
+    if(isOtpMatch)
+    {
+        await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
+       return  res.status(200).json({
         status: httpStatus.SUCCESS,
         data: "Your Email is verified Now ",
+    });
+    }
+    res.status(401).json({
+        status: httpStatus.FAIL,
+        data: "Wrong Otp",
     });
 });
 

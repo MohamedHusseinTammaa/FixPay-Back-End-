@@ -8,20 +8,14 @@ import * as httpStatus from "../../Utils/Http/httpStatusText.js";
 import * as httpMessage from "../../Utils/Http/HttpDataText.js";
 import { AppError } from "../../Utils/Errors/AppError.js";
 import * as Services from "./user.service.js";
-import { generateHash } from '../../Utils/Encrypt/hashing.js';
+import { generateHash, CompareHash } from '../../Utils/Encrypt/hashing.js';
 import { OtpTypesEnum, Roles } from '../../Utils/enums/usersRoles.js';
 import { localEmmiter, htmlOtpTemp, htmlResetPasswordOtpTemp } from '../../Utils/Services/sendEmail.service.js';
 import blackListedTokenModel from '../../Models/blackListedToken.model.js';
 import { v4 as uuidv4 } from 'uuid';
 import { customAlphabet } from "nanoid";
-import {generateHash} from '../../Utils/Encrypt/hashing.js'
-import {OtpTypesEnum, Roles} from '../../Utils/enums/usersRoles.js'
-import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
-import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
-import blackListedTokenModel from'../../Models/blackListedToken.model.js'
-import { v4 as uuidv4 } from 'uuid';
-import {CompareHash} from '../../Utils/Encrypt/hashing.js'
-const generateOtp = customAlphabet('0123456789', 6)
+
+const generateOtp = customAlphabet('0123456789', 6);
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -131,10 +125,12 @@ const login = asyncWrapper(async (req, res, next) => {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
     const user = await Services.loginService(email);
-
-    if (!user) {
-        return next(new AppError("email and password doesn't match", 400, httpStatus.FAIL));
-    }
+    console.log({user})
+    if(!user)
+        {
+            console.log("not found");
+            
+        }
 
     const passwordMatched = await bcrypt.compare(password, user.password);
 

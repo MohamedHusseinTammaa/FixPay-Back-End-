@@ -14,10 +14,14 @@ import { localEmmiter, htmlOtpTemp, htmlResetPasswordOtpTemp } from '../../Utils
 import blackListedTokenModel from '../../Models/blackListedToken.model.js';
 import { v4 as uuidv4 } from 'uuid';
 import { customAlphabet } from "nanoid";
-import { CompareHash } from '../../Utils/Encrypt/hashing.js';
-import { checkSchema } from "express-validator";
-
-const generateOtp = customAlphabet('0123456789', 6);
+import {generateHash} from '../../Utils/Encrypt/hashing.js'
+import {OtpTypesEnum, Roles} from '../../Utils/enums/usersRoles.js'
+import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
+import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
+import blackListedTokenModel from'../../Models/blackListedToken.model.js'
+import { v4 as uuidv4 } from 'uuid';
+import {CompareHash} from '../../Utils/Encrypt/hashing.js'
+const generateOtp = customAlphabet('0123456789', 6)
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -57,16 +61,11 @@ const register = asyncWrapper(async (req, res, next) => {
     if (!errors.isEmpty()) {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
-    
+
+    // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
-    
-    const isexist = await User.findOne({ email });
-    if (isexist) {   
-        return next(new AppError("the email is already registered", 400, httpStatus.FAIL));
-    }
-    
-    if (role === Roles.worker && !ssn) {
-        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, "worker must add his ssn"));
+    if(role===Roles.worker&&!ssn){
+        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL,"worker must add his ssn"));
     }
     
     let parsedDateOfBirth = dateOfBirth;
@@ -86,34 +85,43 @@ const register = asyncWrapper(async (req, res, next) => {
         expiresAt: new Date(Date.now() + 600000),
         otpType: OtpTypesEnum.CONFIRMATION
     }
-    
+
     const newUser = new User({
-        name: { first: name.first, last: name.last },
-        userName, dateOfBirth: parsedDateOfBirth, gender, phoneNumber, email,
-        password: hashedPassword, role, avatar, ssn,
-        address: { government: address?.government, city: address?.city, street: address?.street },
-        otp: confirmationOtp
+        name: {
+            first: name.first,
+            last: name.last
+        },
+        userName,
+        dateOfBirth: parsedDateOfBirth,
+        gender,
+        phoneNumber,
+        email,
+        password: hashedPassword,
+        role,
+        avatar,
+        ssn,
+        address: {
+            government: address.government,
+            city: address.city,
+            street: address.street
+        },
+        otp:confirmationOtp
     });
 
     try {
-        const user = await Services.registerService(newUser); 
-        
+        const user = await Services.registerService(newUser);
         res.status(201).json({
             status: httpStatus.SUCCESS,
-            data: user 
+            data: user
         });
     } catch (err) {
-        if (err.code === 11000) {
-            return next(new AppError("the email is already registered", 400, httpStatus.FAIL));
-        }
+       if(err.code===11000){
+
+        return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
+       }
         next(err);
     }
-    
-    localEmmiter.emit('sendEmail', { 
-        to: email, 
-        subject: "رمز التحقق - OTP for Sign Up", 
-        content: htmlOtpTemp(otp) 
-    });
+    localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
 });
 
 const login = asyncWrapper(async (req, res, next) => {
@@ -155,20 +163,21 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    const { otp } = req.body;
-    const user = await User.findById(req.currentUser.id);
-    const otpValue = user.otp?.value;
+    const {otp}=req.body
+    const user= await User.findById(req.currentUser.id)
+    const otpValue = user.otp?.value
 
-    console.log({ user });
+    console.log({user});
     
-    const isOtpMatch = await CompareHash(otp, otpValue);
-    
-    if (isOtpMatch) {
+    const isOtpMatch= await CompareHash(otp,otpValue
+    )
+    if(isOtpMatch)
+    {
         await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
-        return res.status(200).json({
-            status: httpStatus.SUCCESS,
-            data: "Your Email is verified Now",
-        });
+       return  res.status(200).json({
+        status: httpStatus.SUCCESS,
+        data: "Your Email is verified Now ",
+    });
     }
     res.status(401).json({
         status: httpStatus.FAIL,
@@ -183,13 +192,13 @@ const logout = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    const token = req.currentUser;
-    console.log({ tokenJTI: token.jti });
+    const token=req.currentUser
+    console.log({tokenJTI:token.jti});
     
-    const data = await blackListedTokenModel.create({
-        tokenId: req.currentUser.jti,
-        expiresAt: new Date(Date.now())
-    });
+  const data=  await blackListedTokenModel.create({
+    tokenId: req.currentUser.jti,
+    expiresAt: new Date(Date.now())
+});
 
     res.status(200).json({
         status: httpStatus.SUCCESS,

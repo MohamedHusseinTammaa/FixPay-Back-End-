@@ -69,7 +69,11 @@ const usersSchema = new mongoose.Schema({
     verifiedAt:{
         type:Date,
         default:Date.now()
-    }
+    },
+    resetPassword: {
+        otp: String,  
+        expiresAt: Date
+      },
 });
 
 const User = mongoose.model("Users", usersSchema, "Users");

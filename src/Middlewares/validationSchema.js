@@ -1,8 +1,18 @@
-// import * as httpStatus from "../Utils/HttpStatusText.ts";
 import validator from "validator";
 import { Roles } from "../Utils/enums/usersRoles.js";
-// import { AppError } from "../Utils/AppError.ts";
-
+//import * as httpStatus from "../Utils/HttpStatusText.ts";
+//import { AppError } from "../Utils/AppError.ts";
+const DISPOSABLE_EMAIL_DOMAINS = [
+    'tempmail.com', 
+    'guerrillamail.com', 
+    '10minutemail.com',
+    'throwaway.email', 
+    'mailinator.com', 
+    'maildrop.cc',
+    'temp-mail.org',
+    'getnada.com',
+    'trashmail.com'
+  ];
 
 export const registerSchema = {
     "name.first": {
@@ -16,14 +26,51 @@ export const registerSchema = {
         isLength: { options: { min: 2, max: 32 }, errorMessage: "last name must be from 2 to 32 chars" }
     },
     userName: {
-        isString: { errorMessage: "username must be string!" },
-        notEmpty: { errorMessage: 'you need to enter a "username"' },
-        isLength: { options: { min: 5, max: 32 }, errorMessage: "username must be from 5 to 32 chars" }
-    },
+        trim: true,
+        isString: { errorMessage: "Username must be a string" },
+        notEmpty: { errorMessage: "Username is required" },
+        isLength: { 
+          options: { min: 5, max: 32 }, 
+          errorMessage: "Username must be between 5 and 32 characters" 
+        },
+        matches: {
+          options: /^[a-zA-Z0-9_]+$/,
+          errorMessage: "Username can only contain letters, numbers, and underscores"
+        }
+      },
     dateOfBirth: {
         notEmpty: { errorMessage: 'you need to enter a "date"' },
-        isDate: { options: { format: "DD-MM-YYYY", strictMode: true }, errorMessage: 'you need to enter date in form "dd-mm-yyyy"' }
-    },
+        isDate: { 
+          options: { 
+            format: "DD-MM-YYYY", 
+            strictMode: true 
+          }, 
+          errorMessage: 'you need to enter date in form "dd-mm-yyyy"' 
+        },
+        custom: {
+          options: (value) => {
+            const [day, month, year] = value.split('-');
+            const birthDate = new Date(year, month - 1, day);
+            const today = new Date();
+            const age = today.getFullYear() - birthDate.getFullYear();
+
+            
+            
+            if (age < 18) {
+              throw new Error("You must be at least 18 years old");
+            }
+            
+            if (age > 120) {
+              throw new Error("Please enter a valid date of birth");
+            }
+
+            if (birthDate > today) {
+                throw new Error("Date of birth cannot be in the future");
+            }
+            return true;
+          }
+        }
+      },
     gender: {
         isBoolean: { errorMessage: "you need to enter gender 0 for male and 1 for female" },
         notEmpty: { errorMessage: 'you need to enter a "gender"' }
@@ -37,19 +84,59 @@ export const registerSchema = {
         }
     },
     email: {
-        isEmail: { errorMessage: "you need to enter Email format !" },
-        notEmpty: { errorMessage: "you need to enter an Email !" },
-        isLength: { options: { min: 5, max: 100 }, errorMessage: "email must be from 5 to 100 chars" }
-    },
+        trim: true,
+        normalizeEmail: true,
+        isEmail: { errorMessage: "Please enter a valid email address" },
+        notEmpty: { errorMessage: "Email is required" },
+        isLength: { 
+          options: { min: 5, max: 100 }, 
+          errorMessage: "Email must be between 5 and 100 characters" 
+        },
+        custom: {
+          options: (value) => {
+            const domain = value.split('@')[1]?.toLowerCase();
+            
+            if (DISPOSABLE_EMAIL_DOMAINS.includes(domain)) {
+              throw new Error("Disposable email addresses are not allowed");
+            }
+            
+            return true;
+          }
+        }
+      },
     password: {
-        isString: { errorMessage: "password must be string!" },
-        notEmpty: { errorMessage: "you need to enter a password !" },
-        isLength: { options: { min: 8, max: 100 }, errorMessage: "password must be from 8 to 100 chars" }
+    isString: { errorMessage: "Password must be a string" },
+    notEmpty: { errorMessage: "Password is required" },
+    isLength: { 
+      options: { min: 8, max: 100 }, 
+      errorMessage: "Password must be between 8 and 100 characters" 
+       },
+    matches: {
+      options: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+      errorMessage: "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+       }
     },
+    confirmPassword: {
+        notEmpty: { errorMessage: "Please confirm your password" },
+        custom: {
+          options: (value, { req }) => {
+            if (value !== req.body.password) {
+              throw new Error("Passwords do not match");
+            }
+            return true;
+          }
+        }
+      },
     role: {
         optional: true,
         isString: { errorMessage: "role must be string!" },
         isIn: { options: [Object.values(Roles)], errorMessage: `role must be one of: ${Object.values(Roles).join(', ')}` }
+    },
+
+    avatar: {
+        optional: true,
+        isString: { errorMessage: "avatar must be string!" },
+        isURL: { errorMessage: "avatar must be a valid URL!" }
     },
 
     ssn: {
@@ -73,6 +160,17 @@ export const registerSchema = {
         isString: { errorMessage: "street must be string!" }
     }
 };
+export const confirmEmailSchema = {
+    otp: {
+      trim: true,
+      notEmpty: { errorMessage: "OTP is required" },
+      isLength: {
+        options: { min: 6, max: 6 },
+        errorMessage: "OTP must be exactly 6 digits"
+      },
+      isNumeric: { errorMessage: "OTP must contain only numbers" }
+    }
+  };
 
 export const loginSchema = {
     email: {
@@ -86,5 +184,172 @@ export const loginSchema = {
         isString: { errorMessage: "password must be string!" },
         notEmpty: { errorMessage: "you need to enter a password !" },
         isLength: { options: { min: 8, max: 100 }, errorMessage: "password must be from 8 to 100 chars" }
+    }
+};
+export const editUserSchema = {
+  "name.first": {
+    optional: true,
+    trim: true,
+    isString: { errorMessage: "First name must be a string" },
+    isLength: { 
+      options: { min: 2, max: 32 }, 
+      errorMessage: "First name must be between 2 and 32 characters" 
+    }
+  },
+  
+  "name.last": {
+    optional: true,
+    trim: true,
+    isString: { errorMessage: "Last name must be a string" },
+    isLength: { 
+      options: { min: 2, max: 32 }, 
+      errorMessage: "Last name must be between 2 and 32 characters" 
+    }
+  },
+  
+  userName: {
+    optional: true,
+    trim: true,
+    isString: { errorMessage: "Username must be a string" },
+    isLength: { 
+      options: { min: 5, max: 32 }, 
+      errorMessage: "Username must be between 5 and 32 characters" 
+    },
+    matches: {
+      options: /^[a-zA-Z0-9_]+$/,
+      errorMessage: "Username can only contain letters, numbers, and underscores"
+    }
+  },
+  
+  dateOfBirth: {
+    optional: true,
+    isDate: { 
+      options: { 
+        format: "DD-MM-YYYY", 
+        strictMode: true 
+      }, 
+      errorMessage: "Date must be in DD-MM-YYYY format" 
+    },
+    custom: {
+      options: (value) => {
+        const [day, month, year] = value.split('-');
+        const birthDate = new Date(year, month - 1, day);
+        const today = new Date();
+        
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        
+        if (birthDate > today) {
+          throw new Error("Date of birth cannot be in the future");
+        }
+        
+        if (age < 18) {
+          throw new Error("You must be at least 18 years old");
+        }
+        
+        if (age > 120) {
+          throw new Error("Please enter a valid date of birth");
+        }
+        
+        return true;
+      }
+    }
+  },
+  
+  gender: {
+    optional: true,
+    custom: {
+      options: (value) => {
+        const validValues = [0, 1, '0', '1', 'male', 'female', 'M', 'F', 'm', 'f', false, true];
+        const stringValue = String(value).toLowerCase();
+        
+        if (!validValues.some(v => String(v).toLowerCase() === stringValue)) {
+          throw new Error("Gender must be: 0/false/male/M for male or 1/true/female/F for female");
+        }
+        
+        return true;
+      }
+    }
+  },
+  
+  phoneNumber: {
+    optional: true,
+    trim: true,
+    isMobilePhone: {
+      options: ["ar-EG"],
+      errorMessage: "Phone number must be a valid Egyptian mobile number"
+    }
+  },
+  
+  "address.government": {
+    optional: true,
+    trim: true,
+    isString: { errorMessage: "Government must be a string" }
+  },
+  
+  "address.city": {
+    optional: true,
+    trim: true,
+    isString: { errorMessage: "City must be a string" }
+  },
+  
+  "address.street": {
+    optional: true,
+    trim: true,
+    isString: { errorMessage: "Street must be a string" }
+  },
+  
+  avatar: {
+    optional: true,
+    isString: { errorMessage: "Avatar must be a string (URL or path)" }
+  }
+};
+export const forgotPasswordSchema = {
+    email: {
+        isEmail: {
+            errorMessage: "Please provide a valid email"
+        },
+        notEmpty: {
+            errorMessage: "Email is required"
+        }
+    }
+};
+
+export const resetPasswordSchema = {
+    email: {
+        isEmail: {
+            errorMessage: "Please provide a valid email"
+        },
+        notEmpty: {
+            errorMessage: "Email is required"
+        }
+    },
+    otp: {
+        notEmpty: {
+            errorMessage: "OTP is required"
+        },
+        isLength: {
+            options: { min: 6, max: 6 },
+            errorMessage: "OTP must be 6 digits"
+        },
+        isNumeric: {
+            errorMessage: "OTP must be numeric"
+        }
+    },
+    newPassword: {
+        isString: { errorMessage: "New password must be a string" },
+        notEmpty: { errorMessage: "New password is required" },
+        isLength: { 
+          options: { min: 8, max: 100 }, 
+          errorMessage: "Password must be between 8 and 100 characters" 
+        },
+        matches: {
+          options: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+          errorMessage: "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        }
     }
 };

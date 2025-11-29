@@ -1,4 +1,4 @@
-import {validationResult } from "express-validator";
+import { validationResult } from "express-validator";
 import User from "../../Models/User.model.js";
 import Jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -9,13 +9,13 @@ import * as httpMessage from "../../Utils/Http/HttpDataText.js";
 import { AppError } from "../../Utils/Errors/AppError.js";
 import * as Services from "./user.service.js";
 import { customAlphabet } from "nanoid";
-import {generateHash} from '../../Utils/Encrypt/hashing.js'
-import {OtpTypesEnum, Roles} from '../../Utils/enums/usersRoles.js'
-import {localEmmiter} from '../../Utils/Services/sendEmail.service.js'
-import{htmlOtpTemp} from '../../Utils/Services/sendEmail.service.js'
-import blackListedTokenModel from'../../Models/blackListedToken.model.js'
+import { generateHash } from '../../Utils/Encrypt/hashing.js'
+import { OtpTypesEnum, Roles } from '../../Utils/enums/usersRoles.js'
+import { localEmmiter } from '../../Utils/Services/sendEmail.service.js'
+import { htmlOtpTemp } from '../../Utils/Services/sendEmail.service.js'
+import blackListedTokenModel from '../../Models/blackListedToken.model.js'
 import { v4 as uuidv4 } from 'uuid';
-import {CompareHash} from '../../Utils/Encrypt/hashing.js'
+import { CompareHash } from '../../Utils/Encrypt/hashing.js'
 const generateOtp = customAlphabet('0123456789', 6)
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
@@ -56,11 +56,18 @@ const register = asyncWrapper(async (req, res, next) => {
     if (!errors.isEmpty()) {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
-
-    // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
-    if(role===Roles.worker&&!ssn){
-        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL,"worker must add his ssn"));
+    if (await User.findOne({ email })) {
+        return next(new AppError("the email is already registered", 409, httpStatus.FAIL))
+    }
+    if (await User.findOne({ userName })) {
+        return next(new AppError("the userName is exist try another one", 409, httpStatus.FAIL))
+    }
+    if (await User.findOne({ ssn })) {
+        return next(new AppError("the SSN is exist", 409, httpStatus.FAIL))
+    }
+    if (role === Roles.worker && !ssn) {
+        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, "worker must add his ssn"));
     }
     let parsedDateOfBirth = dateOfBirth;
     if (dateOfBirth) {
@@ -76,7 +83,7 @@ const register = asyncWrapper(async (req, res, next) => {
         expiresAt: new Date(Date.now() + 600000),
         otpType: OtpTypesEnum.CONFIRMATION
     }
-    
+
     const newUser = new User({
         name: {
             first: name.first,
@@ -96,22 +103,13 @@ const register = asyncWrapper(async (req, res, next) => {
             city: address.city,
             street: address.street
         },
-        otp:confirmationOtp
+        otp: confirmationOtp
     });
-
-    try {
-        const user = await Services.registerService(newUser);
-        res.status(201).json({
-            status: httpStatus.SUCCESS,
-            data: user
-        });
-    } catch (err) {
-       if(err.code===11000){
-
-        return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
-       }
-        next(err);
-    }
+    const user = await Services.registerService(newUser);
+    res.status(201).json({
+        status: httpStatus.SUCCESS,
+        data: user
+    })
     localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
 });
 
@@ -130,7 +128,7 @@ const login = asyncWrapper(async (req, res, next) => {
     const passwordMatched = await bcrypt.compare(password, user.password);
 
     if (passwordMatched) {
-        const token = Jwt.sign({ email: user.email, id: user.id, role: user.role ,jti: uuidv4()}, process.env.JWT_KEY);
+        const token = Jwt.sign({ email: user.email, id: user.id, role: user.role, jti: uuidv4() }, process.env.JWT_KEY);
         return res.status(200).json({
             status: httpStatus.SUCCESS,
             data: user.email,
@@ -153,21 +151,20 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    const {otp}=req.body
-    const user= await User.findById(req.currentUser.id)
+    const { otp } = req.body
+    const user = await User.findById(req.currentUser.id)
     const otpValue = user.otp?.value
 
-    console.log({user});
-    
-    const isOtpMatch= await CompareHash(otp,otpValue
+    console.log({ user });
+
+    const isOtpMatch = await CompareHash(otp, otpValue
     )
-    if(isOtpMatch)
-    {
+    if (isOtpMatch) {
         await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
-       return  res.status(200).json({
-        status: httpStatus.SUCCESS,
-        data: "Your Email is verified Now ",
-    });
+        return res.status(200).json({
+            status: httpStatus.SUCCESS,
+            data: "Your Email is verified Now ",
+        });
     }
     res.status(401).json({
         status: httpStatus.FAIL,
@@ -182,18 +179,18 @@ const logout = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    const token=req.currentUser
-    console.log({tokenJTI:token.jti});
-    
-  const data=  await blackListedTokenModel.create({
-    tokenId: req.currentUser.jti,
-    expiresAt: new Date(Date.now())
-});
+    const token = req.currentUser
+    console.log({ tokenJTI: token.jti });
+
+    const data = await blackListedTokenModel.create({
+        tokenId: req.currentUser.jti,
+        expiresAt: new Date(Date.now())
+    });
 
     res.status(200).json({
         status: httpStatus.SUCCESS,
         data: data,
-        message:"logged out successfully"
+        message: "logged out successfully"
     });
 });
 

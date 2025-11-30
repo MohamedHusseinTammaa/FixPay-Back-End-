@@ -14,7 +14,8 @@ import { localEmmiter, htmlOtpTemp, htmlResetPasswordOtpTemp } from '../../Utils
 import blackListedTokenModel from '../../Models/blackListedToken.model.js';
 import { v4 as uuidv4 } from 'uuid';
 import { customAlphabet } from "nanoid";
-
+ import cloudinary from "../../Utils/cloud/cloudinary.js";
+import fs from "fs";
 const generateOtp = customAlphabet('0123456789', 6);
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
@@ -58,22 +59,22 @@ const register = asyncWrapper(async (req, res, next) => {
 
     // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
-    if(role===Roles.worker&&!ssn){
-        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL,"worker must add his ssn"));
+    if (role === Roles.worker && !ssn) {
+        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, "worker must add his ssn"));
     }
-    
+
     let parsedDateOfBirth = dateOfBirth;
     if (dateOfBirth) {
         const [day, month, year] = dateOfBirth.split("-");
         parsedDateOfBirth = new Date(year, month - 1, day);
     }
-    
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const otp = generateOtp();
     const hashOtp = generateHash(otp);
-    
+
     console.log('📧 Registration OTP:', otp);
-    
+
     const confirmationOtp = {
         value: hashOtp,
         expiresAt: new Date(Date.now() + 600000),
@@ -99,7 +100,7 @@ const register = asyncWrapper(async (req, res, next) => {
             city: address.city,
             street: address.street
         },
-        otp:confirmationOtp
+        otp: confirmationOtp
     });
 
     try {
@@ -109,10 +110,10 @@ const register = asyncWrapper(async (req, res, next) => {
             data: user
         });
     } catch (err) {
-       if(err.code===11000){
+        if (err.code === 11000) {
 
-        return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
-       }
+            return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
+        }
         next(err);
     }
     localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
@@ -125,12 +126,11 @@ const login = asyncWrapper(async (req, res, next) => {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
     const user = await Services.loginService(email);
-    console.log({user})
-    if(!user)
-        {
-            console.log("not found");
-            
-        }
+    console.log({ user })
+    if (!user) {
+        console.log("not found");
+
+    }
 
     const passwordMatched = await bcrypt.compare(password, user.password);
 
@@ -159,21 +159,20 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    const {otp}=req.body
-    const user= await User.findById(req.currentUser.id)
+    const { otp } = req.body
+    const user = await User.findById(req.currentUser.id)
     const otpValue = user.otp?.value
 
-    console.log({user});
-    
-    const isOtpMatch= await CompareHash(otp,otpValue
+    console.log({ user });
+
+    const isOtpMatch = await CompareHash(otp, otpValue
     )
-    if(isOtpMatch)
-    {
+    if (isOtpMatch) {
         await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
-       return  res.status(200).json({
-        status: httpStatus.SUCCESS,
-        data: "Your Email is verified Now ",
-    });
+        return res.status(200).json({
+            status: httpStatus.SUCCESS,
+            data: "Your Email is verified Now ",
+        });
     }
     res.status(401).json({
         status: httpStatus.FAIL,
@@ -188,13 +187,13 @@ const logout = asyncWrapper(async (req, res, next) => {
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
-    const token=req.currentUser
-    console.log({tokenJTI:token.jti});
-    
-  const data=  await blackListedTokenModel.create({
-    tokenId: req.currentUser.jti,
-    expiresAt: new Date(Date.now())
-});
+    const token = req.currentUser
+    console.log({ tokenJTI: token.jti });
+
+    const data = await blackListedTokenModel.create({
+        tokenId: req.currentUser.jti,
+        expiresAt: new Date(Date.now())
+    });
 
     res.status(200).json({
         status: httpStatus.SUCCESS,
@@ -254,9 +253,9 @@ const forgotPassword = asyncWrapper(async (req, res, next) => {
     }
 
     const { email } = req.body;
-    
+
     const { resetOtp, user } = await Services.forgotPasswordService(email);
-    
+
     if (!user) {
         return res.status(200).json({
             status: httpStatus.SUCCESS,
@@ -266,10 +265,10 @@ const forgotPassword = asyncWrapper(async (req, res, next) => {
 
     console.log('🔑 Reset Password OTP:', resetOtp);
 
-    localEmmiter.emit('sendEmail', { 
-        to: email, 
-        subject: "إعادة تعيين كلمة المرور - Password Reset OTP", 
-        content: htmlResetPasswordOtpTemp(resetOtp) 
+    localEmmiter.emit('sendEmail', {
+        to: email,
+        subject: "إعادة تعيين كلمة المرور - Password Reset OTP",
+        content: htmlResetPasswordOtpTemp(resetOtp)
     });
 
     res.status(200).json({
@@ -294,7 +293,7 @@ const resetPassword = asyncWrapper(async (req, res, next) => {
 
     try {
         await Services.resetPasswordService(email, otp, newPassword);
-        
+
         res.status(200).json({
             status: httpStatus.SUCCESS,
             message: "Password reset successfully"
@@ -303,6 +302,35 @@ const resetPassword = asyncWrapper(async (req, res, next) => {
         return next(new AppError(error.message, 400, httpStatus.FAIL));
     }
 });
+
+
+
+
+ const profileImage = asyncWrapper(async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError("No file uploaded", 400, httpStatus.FAIL));
+  }
+  
+  const localFilePath = req.file.path; 
+  const result = await cloudinary.uploader.upload(localFilePath, {
+      folder: `FixPay/users/${req.currentUser.id}`
+
+  });
+
+//  fs.unlink(localFilePath, () => {});
+
+  const user = await User.findByIdAndUpdate(
+    req.currentUser.id,
+    { avatar: result.secure_url },
+    { new: true }
+  );
+
+  return res.status(200).json({
+    message: "Profile image updated successfully",
+    file: user
+  });
+});
+
 
 export {
     getAllUsers,
@@ -314,5 +342,6 @@ export {
     confirmEmail,
     logout,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    profileImage
 };

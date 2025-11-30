@@ -73,7 +73,7 @@ const usersSchema = new mongoose.Schema({
     resetPassword: {
         otp: String,  
         expiresAt: Date
-      },
+      }
 });
 
 const User = mongoose.model("Users", usersSchema, "Users");

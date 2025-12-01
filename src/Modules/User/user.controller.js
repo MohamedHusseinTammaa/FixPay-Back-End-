@@ -14,7 +14,7 @@ import { localEmmiter, htmlOtpTemp, htmlResetPasswordOtpTemp } from '../../Utils
 import blackListedTokenModel from '../../Models/blackListedToken.model.js';
 import { v4 as uuidv4 } from 'uuid';
 import { customAlphabet } from "nanoid";
- import cloudinary from "../../Utils/cloud/cloudinary.js";
+import cloudinary from "../../Utils/cloud/cloudinary.js";
 import fs from "fs";
 const generateOtp = customAlphabet('0123456789', 6);
 
@@ -135,7 +135,13 @@ const login = asyncWrapper(async (req, res, next) => {
     const passwordMatched = await bcrypt.compare(password, user.password);
 
     if (passwordMatched) {
-        const token = Jwt.sign({ email: user.email, id: user.id, role: user.role, jti: uuidv4() }, process.env.JWT_KEY);
+        const token = Jwt.sign(
+            { email: user.email, _id: user._id, role: user.role, jti: uuidv4() },
+            process.env.JWT_KEY,
+            { expiresIn: '30m' } 
+        );
+
+
         return res.status(200).json({
             status: httpStatus.SUCCESS,
             data: user.email,
@@ -306,29 +312,31 @@ const resetPassword = asyncWrapper(async (req, res, next) => {
 
 
 
- const profileImage = asyncWrapper(async (req, res, next) => {
-  if (!req.file) {
-    return next(new AppError("No file uploaded", 400, httpStatus.FAIL));
-  }
-  
-  const localFilePath = req.file.path; 
-  const result = await cloudinary.uploader.upload(localFilePath, {
-      folder: `FixPay/users/${req.currentUser.id}`
+const profileImage = asyncWrapper(async (req, res, next) => {
+    if (!req.file) {
+        return next(new AppError("No file uploaded", 400, httpStatus.FAIL));
+    }
 
-  });
+    const localFilePath = req.file.path;
+    const result = await cloudinary.uploader.upload(localFilePath, {
+        folder: `FixPay/users/${req.currentUser._id}`
 
-//  fs.unlink(localFilePath, () => {});
+    });
 
-  const user = await User.findByIdAndUpdate(
-    req.currentUser.id,
-    { avatar: result.secure_url },
-    { new: true }
-  );
+    //  fs.unlink(localFilePath, () => {});
 
-  return res.status(200).json({
-    message: "Profile image updated successfully",
-    file: user
-  });
+    console.log(result.secure_url);
+
+    const user = await User.findByIdAndUpdate(
+        req.currentUser._id,
+        { avatar: result.secure_url },
+        { new: true }
+    );
+    
+    return res.status(200).json({
+        message: "Profile image updated successfully",
+        file: user
+    });
 });
 
 

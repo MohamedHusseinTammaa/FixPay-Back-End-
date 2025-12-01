@@ -2,7 +2,7 @@ import Jwt from "jsonwebtoken";
 import { AppError } from "../Utils/Errors/AppError.js";  // Update this path
 import * as httpStatus from "../Utils/Http/httpStatusText.js";  // Update this path
 import blackListedTokenModel from '../Models/blackListedToken.model.js'
-export const verifyToken = async(req, res, next) => {
+export const verifyToken = async (req, res, next) => {
     try {
         const authHeader = req.headers["authorization"];
         if (!authHeader) {
@@ -24,20 +24,26 @@ export const verifyToken = async(req, res, next) => {
         if (!secret) {
             return next(new AppError("The server is not configured properly", 500, httpStatus.FAIL));
         }
-        
+
         try {
             const decoded = Jwt.verify(token, secret);
-             const isSessionEnded = await blackListedTokenModel.findOne({ 
-                tokenId: decoded.jti 
+            const isSessionEnded = await blackListedTokenModel.findOne({
+                tokenId: decoded.jti
             });
-            
+
             if (isSessionEnded) {
                 return res.status(401).json({
                     status: "error",
                     message: "your session is ended"
                 });
             }
-            req.currentUser = decoded;
+            req.currentUser = {
+                ...decoded,
+                _id: decoded._id
+            };
+
+            console.log({ user: req.currentUser._id });
+
             next();
         } catch (err) {
             return next(new AppError("The token is invalid", 401, httpStatus.FAIL));

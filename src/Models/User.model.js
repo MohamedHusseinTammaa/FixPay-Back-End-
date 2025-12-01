@@ -39,8 +39,7 @@ const usersSchema = new mongoose.Schema({
         default :Roles.user
     },
     avatar :{
-        type : String,
-        default: "uploads/default.png"
+        type : String
     },
     rating : {
         type :Number, //{1->5}
@@ -67,8 +66,7 @@ const usersSchema = new mongoose.Schema({
     }
     ,
     verifiedAt:{
-        type:Date,
-        default:Date.now()
+        type:Date
     },
     resetPassword: {
         otp: String,  

@@ -166,7 +166,7 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
         );
     }
     const { otp } = req.body
-    const user = await User.findById(req.currentUser.id)
+    const user = await User.findById(req.currentUser._id)
     const otpValue = user.otp?.value
 
     console.log({ user });

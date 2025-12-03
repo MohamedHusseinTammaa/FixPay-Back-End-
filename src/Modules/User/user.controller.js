@@ -260,27 +260,37 @@ const forgotPassword = asyncWrapper(async (req, res, next) => {
 
     const { email } = req.body;
 
-    const { resetOtp, user } = await Services.forgotPasswordService(email);
+    try {
+        const { resetOtp, user } = await Services.forgotPasswordService(email);
 
-    if (!user) {
+        if (!user) {
+            return res.status(200).json({
+                status: httpStatus.SUCCESS,
+                message: "If the email exists and is verified, a reset OTP has been sent"
+            });
+        }
+
+        console.log('🔑 Reset Password OTP:', resetOtp);
+
+        localEmmiter.emit('sendEmail', {
+            to: email,
+            subject: "إعادة تعيين كلمة المرور - Password Reset OTP",
+            content: htmlResetPasswordOtpTemp(resetOtp)
+        });
+
         return res.status(200).json({
             status: httpStatus.SUCCESS,
-            message: "If the email exists, a reset OTP has been sent"
+            message: "Reset OTP has been sent to your email"
         });
+
+    } catch (error) {
+        if (error.message === "Email must be verified before requesting password reset") {
+            return next(new AppError("Please verify your email before requesting a password reset", 403, httpStatus.FAIL));
+        }
+        
+        console.error("Forgot password error:", error);
+        return next(new AppError("An error occurred while processing your request", 500, httpStatus.ERROR));
     }
-
-    console.log('🔑 Reset Password OTP:', resetOtp);
-
-    localEmmiter.emit('sendEmail', {
-        to: email,
-        subject: "إعادة تعيين كلمة المرور - Password Reset OTP",
-        content: htmlResetPasswordOtpTemp(resetOtp)
-    });
-
-    res.status(200).json({
-        status: httpStatus.SUCCESS,
-        message: "If the email exists, a reset OTP has been sent"
-    });
 });
 
 const resetPassword = asyncWrapper(async (req, res, next) => {

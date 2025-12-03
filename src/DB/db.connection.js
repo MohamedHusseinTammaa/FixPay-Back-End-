@@ -3,7 +3,7 @@ const dbConnection = async () => {
     try {
 
 
-        const conn = await mongoose.connect("mongodb+srv://mohamedsamirrrrrr:oSwPavil69GixLCN@cluster0.9dtw3jp.mongodb.net/fixpay?retryWrites=true&w=majority");
+        const conn = await mongoose.connect("mongodb://localhost:27017/fixpay_db_local");
 
         console.log(`MongoDB Connected: ${conn.connection.host}`);
 

@@ -2,6 +2,7 @@ import User from "../../Models/User.model.js";
 import * as crypto from 'crypto';
 import bcrypt from 'bcryptjs'; 
 import { generateHash, CompareHash } from "../../Utils/Encrypt/hashing.js";
+import { OtpTypesEnum } from "../../Utils/enums/usersRoles.js";
 
 const getAllUsersService = async () => {
     return await User.find().lean();
@@ -28,30 +29,35 @@ const editUserService = async (id, user) => {
 const deleteUserService = async (id) => {
     return await User.findByIdAndDelete(id).lean();
 };
+
 const forgotPasswordService = async (email) => {
     const user = await User.findOne({ email });
-
+    
     if (!user) {
         return { resetOtp: null, user: null };
+    }
+
+    if (!user.verifiedAt) {
+        throw new Error("Email must be verified before requesting password reset");
     }
 
     const resetOtp = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedOtp = generateHash(resetOtp);
 
     user.resetPassword = {
-        otp: hashedOtp,
-        expiresAt: Date.now() + 15 * 60 * 1000 
+        value: hashedOtp, 
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        otpType: OtpTypesEnum.RESET_PASSWORD  
     };
 
     await user.save();
-
     return { resetOtp, user };
 };
 
 const resetPasswordService = async (email, otp, newPassword) => {
     const user = await User.findOne({ email });
-
-    if (!user || !user.resetPassword?.otp) {
+    
+    if (!user || !user.resetPassword?.value) {
         throw new Error("Invalid or expired OTP");
     }
 
@@ -59,7 +65,7 @@ const resetPasswordService = async (email, otp, newPassword) => {
         throw new Error("OTP has expired");
     }
 
-    const isValidOtp = await CompareHash(otp, user.resetPassword.otp);
+    const isValidOtp = await CompareHash(otp, user.resetPassword.value);
     
     if (!isValidOtp) {
         throw new Error("Invalid OTP");
@@ -72,12 +78,10 @@ const resetPasswordService = async (email, otp, newPassword) => {
 
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPassword = undefined;
-
     await user.save();
-
+    
     return user;
 };
-
 
 export {
     getAllUsersService,

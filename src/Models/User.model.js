@@ -79,7 +79,18 @@ const usersSchema = new mongoose.Schema({
             type: String,
             enum: [...Object.values(OtpTypesEnum)] 
         }
+    },
+    deletedAt :{
+        type:Date
+    },
+    restoreUntil:{
+        type:Date
+    },
+    deleted:{
+        type :Boolean,
+        default:false
     }
+
 });
 
 const User = mongoose.model("Users", usersSchema, "Users");

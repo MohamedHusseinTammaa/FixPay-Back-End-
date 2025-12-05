@@ -18,7 +18,8 @@ import {
     forgotPassword,
     resetPassword,
     resendResetPasswordOtp,
-    profileImage
+    profileImage,
+    restoreDeletedAccount
 } from "../Modules/User/user.controller.js";
 
 const router = Router();
@@ -28,7 +29,6 @@ router.get("/", verifyToken, getAllUsers);
 router.get("/:id", verifyToken, getUserById);
 router.patch("/:id", verifyToken, editUser);
 router.delete("/:id", verifyToken, deleteUser);
-
 
 router.post("/register", normalizeAuthFields, checkSchema(registerSchema), register);
 router.post("/login", normalizeAuthFields, checkSchema(loginSchema), login);

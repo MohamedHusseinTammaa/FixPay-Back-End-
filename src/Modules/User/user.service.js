@@ -1,8 +1,10 @@
 import User from "../../Models/User.model.js";
 import * as crypto from 'crypto';
 import bcrypt from 'bcryptjs'; 
+import { AppError } from "../../Utils/Errors/AppError.js";
 import { generateHash, CompareHash, hashPII, comparePII } from '../../Utils/Encrypt/hashing.js';
 import { OtpTypesEnum } from "../../Utils/enums/usersRoles.js";
+import { ServiceErrorsEnum } from "../../Utils/Errors/errormessages/UserServiceErrors.js";
 
 const getAllUsersService = async () => {
     return await User.find().lean();
@@ -23,7 +25,8 @@ const registerService = async (newUserData) => {
 };
 
 const loginService = async (email) => {
-    return await User.findOne({ email });
+    const user =await User.findOne({ email });
+    return user;
 };
 
 const editUserService = async (id, user) => {
@@ -31,9 +34,27 @@ const editUserService = async (id, user) => {
 };
 
 const deleteUserService = async (id) => {
-    return await User.findByIdAndDelete(id).lean();
+    const deleted = await User.findByIdAndUpdate(id,{
+        deleted:true,
+        deletedAt: Date.now(),
+        restoreUntil: Date.now() + 30 * 24 * 60 * 60 * 1000
+    },{ new: true });
+    return deleted;
 };
+const restoreDeletedUserService= async(id)=>{
+    const user = await User.findById(id);
 
+    if (!user) return ;
+    if (!user.deletedAt || !user.restoreUntil) return ;
+    if (Date.now() > user.restoreUntil) return ;
+    user.deletedAt = undefined;
+    user.restoreUntil = undefined;
+    user.deleted=false;
+
+    await user.save();
+    return user;
+    
+}
 const forgotPasswordService = async (email) => {
     const user = await User.findOne({ email });
     
@@ -103,5 +124,6 @@ export {
     editUserService,
     deleteUserService,
     forgotPasswordService,
-    resetPasswordService
+    resetPasswordService,
+    restoreDeletedUserService
 };

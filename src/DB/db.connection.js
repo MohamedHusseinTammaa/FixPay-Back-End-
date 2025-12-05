@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
+import "dotenv/config";
 const dbConnection = async () => {
     try {
 
 
-        const conn = await mongoose.connect("mongodb://localhost:27017/fixpay_db_local");
+        const conn = await mongoose.connect(process.env.MONGODB_URI);
 
         console.log(`MongoDB Connected: ${conn.connection.host}`);
 

@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { customAlphabet } from "nanoid";
 import cloudinary from "../../Utils/cloud/cloudinary.js";
 import fs from "fs";
+import { ServiceErrorsEnum } from "../../Utils/Errors/errormessages/UserServiceErrors.js";
 const generateOtp = customAlphabet('0123456789', 6);
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
@@ -33,7 +34,6 @@ const getAllUsers = asyncWrapper(async (req, res, next) => {
         data: { users },
     });
 });
-
 const getUserById = asyncWrapper(async (req, res, next) => {
     const { id } = req.params;
     if (!id) {
@@ -50,7 +50,6 @@ const getUserById = asyncWrapper(async (req, res, next) => {
         data: user,
     });
 });
-
 const register = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -156,7 +155,6 @@ const register = asyncWrapper(async (req, res, next) => {
         return next(new AppError("Registration failed due to server error", 500, httpStatus.ERROR));
     }
 });
-
 const login = asyncWrapper(async (req, res, next) => {
     const { email, password } = req.body;
     const errors = validationResult(req);
@@ -164,6 +162,7 @@ const login = asyncWrapper(async (req, res, next) => {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
     const user = await Services.loginService(email);
+
     if (!user) {
         return next(new AppError("Invalid email or password", 401, httpStatus.FAIL));
     }
@@ -176,7 +175,15 @@ const login = asyncWrapper(async (req, res, next) => {
             process.env.JWT_KEY,
             { expiresIn: '30m' } 
         );
-
+            
+        if (user.deleted) {
+            if (user.restoreUntil > Date.now()) {
+              const restored=await Services.restoreDeletedUserService(user._id);
+              if(!restored) return next(new AppError("Invalid email or password", 401, httpStatus.FAIL));
+            } else {
+              return next(new AppError("Invalid email or password", 401, httpStatus.FAIL));
+            }
+        }
 
         return res.status(200).json({
             status: httpStatus.SUCCESS,
@@ -193,7 +200,6 @@ const login = asyncWrapper(async (req, res, next) => {
         details: null
     });
 });
-
 const confirmEmail = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
 
@@ -257,7 +263,6 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
         message: "Your email has been verified successfully",
     });
 });
-
 const resendConfirmationOtp = asyncWrapper(async (req, res, next) => {
     const RESEND_COOLDOWN_MS = 60 * 1000;
     
@@ -313,8 +318,6 @@ const resendConfirmationOtp = asyncWrapper(async (req, res, next) => {
         message: "A new verification OTP has been sent to your email.",
     });
 });
-
-
 const logout = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -336,7 +339,6 @@ const logout = asyncWrapper(async (req, res, next) => {
         message: "logged out successfully"
     });
 });
-
 const editUser = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -361,7 +363,6 @@ const editUser = asyncWrapper(async (req, res, next) => {
         data: updated,
     });
 });
-
 const deleteUser = asyncWrapper(async (req, res, next) => {
     const { id } = req.params;
     if (!id) {
@@ -372,13 +373,38 @@ const deleteUser = asyncWrapper(async (req, res, next) => {
     if (!deleted) {
         return next(new AppError(httpMessage.NOT_FOUND, 404, httpStatus.FAIL));
     }
+    const token = req.currentUser
+    console.log({ tokenJTI: token.jti });
+
+    const data = await blackListedTokenModel.create({
+        tokenId: req.currentUser.jti,
+        expiresAt: new Date(Date.now())
+    });
 
     res.status(200).json({
         status: httpStatus.SUCCESS,
         data: deleted,
+        token:data,
+        days : "you have 30 days to restore your account",
+        restore_until :deleted.restoreUntil
     });
 });
-
+const restoreDeletedAccount = asyncWrapper(async (req, res, next) => {
+    const userId = req.currentUser._id;
+    const restored = Services.restoreDeletedUserService(userId);
+    
+    if(!restored) return next(new AppError(httpMessage.NOT_FOUND,404,httpStatus.NOT_FOUND));
+    
+    return res.status(200).json({
+        status: httpStatus.SUCCESS,
+        message: "Your account has been restored successfully",
+        data: {
+            _id: user._id,
+            email: user.email,
+            userName: user.userName
+        }
+    });
+});
 const forgotPassword = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     const STRICT_COOLDOWN_MS = 60 * 1000; 
@@ -449,8 +475,6 @@ const forgotPassword = asyncWrapper(async (req, res, next) => {
         return next(new AppError("An error occurred while processing your request", 500, httpStatus.ERROR));
         }
 });
-
-
 const resetPassword = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -476,7 +500,6 @@ const resetPassword = asyncWrapper(async (req, res, next) => {
         return next(new AppError(error.message, 400, httpStatus.FAIL));
     }
 });
-
 const resendResetPasswordOtp = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -574,8 +597,6 @@ const profileImage = asyncWrapper(async (req, res, next) => {
         file: user
     });
 });
-
-
 export {
     getAllUsers,
     getUserById,
@@ -589,5 +610,6 @@ export {
     forgotPassword,
     resetPassword,
     resendResetPasswordOtp,
-    profileImage
+    profileImage,
+    restoreDeletedAccount
 };

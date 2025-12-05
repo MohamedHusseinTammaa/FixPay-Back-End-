@@ -3,6 +3,7 @@ import { checkSchema } from "express-validator";
 import { verifyToken } from "../Middlewares/verifytoken.js";
 import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from "../Middlewares/validationSchema.js";
 import {localFileUpload} from '../multer/multer.js'
+import { normalizeAuthFields } from "../Middlewares/normalizeInput.js";
 import express from "express"
 import {
     editUser,
@@ -12,9 +13,11 @@ import {
     register,
     login,
     confirmEmail,
+    resendConfirmationOtp,
     logout,
     forgotPassword,
     resetPassword,
+    resendResetPasswordOtp,
     profileImage
 } from "../Modules/User/user.controller.js";
 
@@ -27,10 +30,11 @@ router.patch("/:id", verifyToken, editUser);
 router.delete("/:id", verifyToken, deleteUser);
 
 
-router.post("/register", checkSchema(registerSchema), register);
-router.post("/login", checkSchema(loginSchema), login);
+router.post("/register", normalizeAuthFields, checkSchema(registerSchema), register);
+router.post("/login", normalizeAuthFields, checkSchema(loginSchema), login);
 router.post("/logout", verifyToken, logout);
 router.post("/confirmEmail", verifyToken, confirmEmail);
+router.post("/resend-confirmation-otp", verifyToken, resendConfirmationOtp);
 router.post(
   "/upload",
 verifyToken,
@@ -38,9 +42,9 @@ verifyToken,
   profileImage
 );
 
-
-router.post("/forgotPassword", checkSchema(forgotPasswordSchema), forgotPassword); 
-router.post("/resetPassword", checkSchema(resetPasswordSchema), resetPassword);
+router.post("/forgotPassword", normalizeAuthFields, checkSchema(forgotPasswordSchema), forgotPassword); 
+router.post("/resend-resetpassword-otp", normalizeAuthFields,checkSchema(forgotPasswordSchema), resendResetPasswordOtp);
+router.post("/resetPassword", normalizeAuthFields, checkSchema(resetPasswordSchema), resetPassword);
 
 
 export default router;

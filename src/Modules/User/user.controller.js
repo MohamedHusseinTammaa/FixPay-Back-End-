@@ -54,69 +54,107 @@ const getUserById = asyncWrapper(async (req, res, next) => {
 const register = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
+        return next(new AppError("Validation failed", 400, httpStatus.FAIL, errors.array()));
     }
 
-    // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
-    if (role === Roles.worker && !ssn) {
-        return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, "worker must add his ssn"));
-    }
+ 
+    const existingUser = await User.findOne({
+        $or: [
+            { email: email },
+            { phoneNumber: phoneNumber },
+            { userName },
+            ...(ssn ? [{ ssn }] : [])
+        ]
+    });
 
-    let parsedDateOfBirth = dateOfBirth;
+    if (existingUser) {
+        return next(new AppError(
+            "Registration failed. Please review your information and try again.",
+            400, 
+            httpStatus.FAIL
+        ));
+    }
+    
+
+    let parsedDateOfBirth = null;
     if (dateOfBirth) {
         const [day, month, year] = dateOfBirth.split("-");
         parsedDateOfBirth = new Date(year, month - 1, day);
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
     const otp = generateOtp();
     const hashOtp = generateHash(otp);
 
-    console.log('📧 Registration OTP:', otp);
-
-    const confirmationOtp = {
-        value: hashOtp,
-        expiresAt: new Date(Date.now() + 600000),
-        otpType: OtpTypesEnum.CONFIRMATION
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(' Registration OTP:', otp);
     }
-
+    
     const newUser = new User({
         name: {
-            first: name.first,
-            last: name.last
+            first: name.first.trim(),
+            last: name.last.trim()
         },
-        userName,
+        userName: userName.trim(),
         dateOfBirth: parsedDateOfBirth,
         gender,
-        phoneNumber,
-        email,
+        phoneNumber: phoneNumber,
+        email: email,
         password: hashedPassword,
         role,
         avatar,
         ssn,
-        address: {
-            government: address.government,
-            city: address.city,
-            street: address.street
-        },
-        otp: confirmationOtp
+        address: address ? {
+            government: address.government?.trim(),
+            city: address.city?.trim(),
+            street: address.street?.trim()
+        } : undefined,
+        otp: {
+            value: hashOtp,
+            createdAt: new Date(),
+            expiresAt: Date.now() + (10 * 60 * 1000),
+            otpType: OtpTypesEnum.CONFIRMATION
+        }
     });
 
     try {
-        const user = await Services.registerService(newUser);
+        const user = await User.create(newUser);
+        
+        localEmmiter.emit('sendEmail', { 
+            to: email, 
+            subject: "OTP for Account Verification", 
+            content: htmlOtpTemp(otp) 
+        });
+        
+        const safeUser = {
+            _id: user._id,
+            email: user.email,
+            userName: user.userName,
+            name: user.name,
+            role: user.role,
+            createdAt: user.createdAt
+        };
+
         res.status(201).json({
             status: httpStatus.SUCCESS,
-            data: user
+            data: safeUser,
+            message: "Registration successful. Please check your email for verification OTP."
         });
+    
     } catch (err) {
         if (err.code === 11000) {
-
-            return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
+            const errorMessage = process.env.NODE_ENV === 'production'
+                ? "Registration failed. Please try again with different information."
+                : `Duplicate field: ${Object.keys(err.keyValue)[0]}`;
+                
+            return next(new AppError(errorMessage, 400, httpStatus.FAIL));
         }
-        next(err);
+        
+        console.error('Registration error:', err);
+        return next(new AppError("Registration failed due to server error", 500, httpStatus.ERROR));
     }
-    localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
 });
 
 const login = asyncWrapper(async (req, res, next) => {
@@ -126,10 +164,8 @@ const login = asyncWrapper(async (req, res, next) => {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
     const user = await Services.loginService(email);
-    console.log({ user })
     if (!user) {
-        console.log("not found");
-
+        return next(new AppError("Invalid email or password", 401, httpStatus.FAIL));
     }
 
     const passwordMatched = await bcrypt.compare(password, user.password);
@@ -160,31 +196,124 @@ const login = asyncWrapper(async (req, res, next) => {
 
 const confirmEmail = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
+
     if (!errors.isEmpty()) {
         return next(
-            new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
+            new AppError(
+                httpMessage.BAD_REQUEST,
+                400,
+                httpStatus.FAIL,
+                errors.array()
+            )
         );
     }
-    const { otp } = req.body
-    const user = await User.findById(req.currentUser._id)
-    const otpValue = user.otp?.value
 
-    console.log({ user });
+    const { otp } = req.body;
+    const user = await User.findById(req.currentUser._id);
 
-    const isOtpMatch = await CompareHash(otp, otpValue
-    )
-    if (isOtpMatch) {
-        await User.findByIdAndUpdate(user._id, { verifiedAt: Date.now() });
-        return res.status(200).json({
-            status: httpStatus.SUCCESS,
-            data: "Your Email is verified Now ",
-        });
+    if (!user) {
+        return next(
+            new AppError("User not found", 404, httpStatus.FAIL)
+        );
     }
-    res.status(401).json({
-        status: httpStatus.FAIL,
-        data: "Wrong Otp",
+
+    if (user.verifiedAt) {
+        return next(
+            new AppError("Email is already verified", 400, httpStatus.FAIL)
+        );
+    }
+
+
+    if (user.otp.expiresAt < Date.now()) {
+        return next(
+            new AppError("OTP has expired. Please request a new one", 400, httpStatus.FAIL)
+        );
+    }
+
+    if (user.otp.otpType !== OtpTypesEnum.CONFIRMATION) {
+        return next(
+            new AppError("Invalid OTP type", 400, httpStatus.FAIL)
+        );
+    }
+
+    const isOtpMatch = await CompareHash(otp, user.otp.value);
+
+    if (!isOtpMatch) {
+        return next(
+            new AppError("Invalid OTP", 401, httpStatus.FAIL)
+        );
+    }
+
+    await User.findByIdAndUpdate(
+        user._id,
+        {
+            verifiedAt: Date.now(),
+            $unset: { otp: "" }
+        }
+    );
+
+    return res.status(200).json({
+        status: httpStatus.SUCCESS,
+        message: "Your email has been verified successfully",
     });
 });
+
+const resendConfirmationOtp = asyncWrapper(async (req, res, next) => {
+    const RESEND_COOLDOWN_MS = 60 * 1000;
+    
+    const user = await User.findById(req.currentUser._id);
+
+    if (!user) {
+        return next(new AppError("User not found", 404, httpStatus.FAIL));
+    }
+
+    if (user.verifiedAt) {
+        return next(new AppError("Email is already verified", 400, httpStatus.FAIL));
+    }
+
+    if (user.otp?.createdAt && user.otp?.expiresAt > Date.now()) {
+        const timeSince = Date.now() - new Date(user.otp.createdAt).getTime();
+        
+        if (timeSince < RESEND_COOLDOWN_MS) {
+            const timeLeft = Math.ceil((RESEND_COOLDOWN_MS - timeSince) / 1000);
+            return next(
+                new AppError(
+                    `Please wait ${timeLeft} seconds before requesting a new OTP.`,
+                    429,
+                    httpStatus.FAIL
+                )
+            );
+        }
+    }
+
+    const otp = generateOtp();
+    const hashedOtp = generateHash(otp);
+
+    if (process.env.NODE_ENV !== "production") {
+        console.log("New Confirmation OTP:", otp);
+    }
+
+    user.otp = {
+        value: hashedOtp,
+        createdAt: new Date(),
+        expiresAt: Date.now() + 10 * 60 * 1000, 
+        otpType: OtpTypesEnum.CONFIRMATION,
+    };
+
+    await user.save();
+
+    localEmmiter.emit("sendEmail", {
+        to: user.email,
+        subject: "Your New Account Verification OTP",
+        content: htmlOtpTemp(otp),
+    });
+
+    return res.status(200).json({
+        status: httpStatus.SUCCESS,
+        message: "A new verification OTP has been sent to your email.",
+    });
+});
+
 
 const logout = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -252,13 +381,39 @@ const deleteUser = asyncWrapper(async (req, res, next) => {
 
 const forgotPassword = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
+    const STRICT_COOLDOWN_MS = 60 * 1000; 
+    const { email } = req.body;
+
     if (!errors.isEmpty()) {
         return next(
             new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
         );
     }
 
-    const { email } = req.body;
+    const existingUser = await User.findOne({ email });
+    
+    if (existingUser && existingUser.resetPassword?.createdAt) { 
+        
+
+        const otpExpired = existingUser.resetPassword.expiresAt && 
+                          existingUser.resetPassword.expiresAt < Date.now();
+        
+        if (!otpExpired) {
+            const lastRequestTime = new Date(existingUser.resetPassword.createdAt).getTime();
+            const timeSinceLastRequest = Date.now() - lastRequestTime;
+
+            if (timeSinceLastRequest < STRICT_COOLDOWN_MS) {
+                const timeLeft = Math.ceil((STRICT_COOLDOWN_MS - timeSinceLastRequest) / 1000);
+                return next(
+                    new AppError(
+                        `Password reset requested too soon. Please wait ${timeLeft} seconds.`,
+                        429,
+                        httpStatus.FAIL
+                    )
+                );
+            }
+        }
+    }
 
     try {
         const { resetOtp, user } = await Services.forgotPasswordService(email);
@@ -270,11 +425,13 @@ const forgotPassword = asyncWrapper(async (req, res, next) => {
             });
         }
 
-        console.log('🔑 Reset Password OTP:', resetOtp);
+         if (process.env.NODE_ENV !== 'production') {
+                console.log("🔑 Reset Password OTP:", resetOtp);
+            }
 
         localEmmiter.emit('sendEmail', {
             to: email,
-            subject: "إعادة تعيين كلمة المرور - Password Reset OTP",
+            subject: "إعادة تعيين كلمة المرور",
             content: htmlResetPasswordOtpTemp(resetOtp)
         });
 
@@ -287,11 +444,12 @@ const forgotPassword = asyncWrapper(async (req, res, next) => {
         if (error.message === "Email must be verified before requesting password reset") {
             return next(new AppError("Please verify your email before requesting a password reset", 403, httpStatus.FAIL));
         }
-        
+
         console.error("Forgot password error:", error);
         return next(new AppError("An error occurred while processing your request", 500, httpStatus.ERROR));
-    }
+        }
 });
+
 
 const resetPassword = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -302,7 +460,7 @@ const resetPassword = asyncWrapper(async (req, res, next) => {
     }
 
     const { email, otp, newPassword } = req.body;
-
+    
     if (!email || !otp || !newPassword) {
         return next(new AppError("Email, OTP and new password are required", 400, httpStatus.FAIL));
     }
@@ -319,9 +477,77 @@ const resetPassword = asyncWrapper(async (req, res, next) => {
     }
 });
 
+const resendResetPasswordOtp = asyncWrapper(async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return next(
+            new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
+        );
+    }
 
+    const { email } = req.body;
+    const RESEND_COOLDOWN_MS = 60 * 1000;
 
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+        return res.status(200).json({
+            status: httpStatus.SUCCESS,
+            message: "If the email exists and is verified, a reset OTP has been sent."
+        });
+    }
 
+    if (user.resetPassword?.createdAt && user.resetPassword?.expiresAt > Date.now()) {
+        const timeSince = Date.now() - new Date(user.resetPassword.createdAt).getTime();
+        
+        if (timeSince < RESEND_COOLDOWN_MS) {
+            const timeLeft = Math.ceil((RESEND_COOLDOWN_MS - timeSince) / 1000);
+            return next(
+                new AppError(
+                    `Please wait ${timeLeft} seconds before requesting a new OTP.`,
+                    429,
+                    httpStatus.FAIL
+                )
+            );
+        }
+    }
+
+    try {
+        const { resetOtp, user: updatedUser } = await Services.forgotPasswordService(email);
+
+        if (!updatedUser) {
+            return res.status(200).json({
+                status: httpStatus.SUCCESS,
+                message: "If the email exists and is verified, a reset OTP has been sent."
+            });
+        }
+
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('Resent Password OTP:', resetOtp);
+        }
+
+        localEmmiter.emit('sendEmail', {
+            to: email,
+            subject: "إعادة تعيين كلمة المرور",
+            content: htmlResetPasswordOtpTemp(resetOtp)
+        });
+
+        return res.status(200).json({
+            status: httpStatus.SUCCESS,
+            message: "New reset OTP has been sent to your email."
+        });
+
+    } catch (error) {
+        if (error.message === "Email must be verified before requesting password reset") {
+            return next(
+                new AppError("Please verify your email before requesting a password reset", 403, httpStatus.FAIL)
+            );
+        }
+
+        console.error("Resend password error:", error);
+        return next(new AppError("An error occurred while processing your request", 500, httpStatus.ERROR));
+    }
+});
 const profileImage = asyncWrapper(async (req, res, next) => {
     if (!req.file) {
         return next(new AppError("No file uploaded", 400, httpStatus.FAIL));
@@ -358,8 +584,10 @@ export {
     login,
     deleteUser,
     confirmEmail,
+    resendConfirmationOtp,
     logout,
     forgotPassword,
     resetPassword,
+    resendResetPasswordOtp,
     profileImage
 };

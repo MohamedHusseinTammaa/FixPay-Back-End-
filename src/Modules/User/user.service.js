@@ -1,7 +1,7 @@
 import User from "../../Models/User.model.js";
 import * as crypto from 'crypto';
 import bcrypt from 'bcryptjs'; 
-import { generateHash, CompareHash } from "../../Utils/Encrypt/hashing.js";
+import { generateHash, CompareHash, hashPII, comparePII } from '../../Utils/Encrypt/hashing.js';
 import { OtpTypesEnum } from "../../Utils/enums/usersRoles.js";
 
 const getAllUsersService = async () => {
@@ -12,10 +12,14 @@ const getUserByIdService = async (id) => {
     return await User.findById(id).lean();
 };
 
-const registerService = async (newUser) => {
-    await newUser.save();
-    const user = await User.find({ _id: newUser.id }, { password: 0, __v: 0 });
-    return user;
+const registerService = async (newUserData) => {
+    const user = await User.create(newUserData);
+    const cleanUser = await User.findById(user._id, {
+        password: 0,
+        __v: 0
+    }).lean();
+
+    return cleanUser;
 };
 
 const loginService = async (email) => {
@@ -45,14 +49,16 @@ const forgotPasswordService = async (email) => {
     const hashedOtp = generateHash(resetOtp);
 
     user.resetPassword = {
-        value: hashedOtp, 
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        otpType: OtpTypesEnum.RESET_PASSWORD  
+        value: hashedOtp,
+        createdAt: new Date(),  
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        otpType: OtpTypesEnum.RESET_PASSWORD
     };
 
     await user.save();
     return { resetOtp, user };
 };
+
 
 const resetPasswordService = async (email, otp, newPassword) => {
     const user = await User.findOne({ email });
@@ -60,24 +66,30 @@ const resetPasswordService = async (email, otp, newPassword) => {
     if (!user || !user.resetPassword?.value) {
         throw new Error("Invalid or expired OTP");
     }
-
+    
     if (user.resetPassword.expiresAt < Date.now()) {
         throw new Error("OTP has expired");
     }
-
+    
+    if (user.resetPassword.otpType !== OtpTypesEnum.RESET_PASSWORD) {
+        throw new Error("Invalid OTP type");
+    }
+    
     const isValidOtp = await CompareHash(otp, user.resetPassword.value);
     
     if (!isValidOtp) {
         throw new Error("Invalid OTP");
     }
-
+    
     const isSameAsOld = await bcrypt.compare(newPassword, user.password);
     if (isSameAsOld) {
         throw new Error("New password must be different from the old password");
     }
-
+    
     user.password = await bcrypt.hash(newPassword, 10);
+    
     user.resetPassword = undefined;
+    
     await user.save();
     
     return user;

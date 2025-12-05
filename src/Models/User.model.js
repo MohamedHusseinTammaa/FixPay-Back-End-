@@ -18,7 +18,9 @@ const usersSchema = new mongoose.Schema({
         type: Boolean // false = male, true = female
     },
     phoneNumber: {
-        type: String
+        type: String,
+        unique: true
+        
     },
     email: {
         type: String,
@@ -58,6 +60,7 @@ const usersSchema = new mongoose.Schema({
     ,
     otp: {
         value: String,
+        createdAt: Date,  
         expiresAt: Date,
         otpType: {
             type:String,
@@ -69,9 +72,14 @@ const usersSchema = new mongoose.Schema({
         type:Date
     },
     resetPassword: {
-        otp: String,  
-        expiresAt: Date
-      }
+        value: String,   
+        createdAt: Date,
+        expiresAt: Date,
+        otpType: {          
+            type: String,
+            enum: [...Object.values(OtpTypesEnum)] 
+        }
+    }
 });
 
 const User = mongoose.model("Users", usersSchema, "Users");

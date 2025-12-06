@@ -177,12 +177,18 @@ const login = asyncWrapper(async (req, res, next) => {
         );
             
         if (user.deleted) {
-            if (user.restoreUntil > Date.now()) {
-              const restored=await Services.restoreDeletedUserService(user._id);
-              if(!restored) return next(new AppError("Invalid email or password", 401, httpStatus.FAIL));
-            } else {
+          if (Date.now() <= user.restoreUntil.getTime()) {
+            
+            const restored = await Services.restoreDeletedUserService(user._id);
+            if (!restored) {
               return next(new AppError("Invalid email or password", 401, httpStatus.FAIL));
             }
+          } else {
+            
+            return next(
+              new AppError("Your account can no longer be restored", 403, httpStatus.FAIL)
+            );
+          }
         }
 
         return res.status(200).json({

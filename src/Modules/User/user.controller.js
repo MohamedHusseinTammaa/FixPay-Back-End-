@@ -51,28 +51,16 @@ const getUserById = asyncWrapper(async (req, res, next) => {
     });
 });
 const register = asyncWrapper(async (req, res, next) => {
+   
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return next(new AppError("Validation failed", 400, httpStatus.FAIL, errors.array()));
-    }
+    if (!errors.isEmpty()) return next(new AppError("Validation failed", 400, httpStatus.FAIL, errors.array()));
 
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
- 
-    const existingUser = await User.findOne({
-        $or: [
-            { email: email },
-            { phoneNumber: phoneNumber },
-            { userName },
-            ...(ssn ? [{ ssn }] : [])
-        ]
-    });
+
+    const existingUser = await Services.findUserByService({ email, phoneNumber, userName, ssn });
 
     if (existingUser) {
-        return next(new AppError(
-            "Registration failed. Please review your information and try again.",
-            400, 
-            httpStatus.FAIL
-        ));
+        return next(new AppError("Registration failed. Information unavailable.", 400, httpStatus.FAIL));
     }
     
 
@@ -119,40 +107,42 @@ const register = asyncWrapper(async (req, res, next) => {
     });
 
     try {
-        const user = await User.create(newUser);
+        const user = await Services.registerService(newUser); 
         
+        const token = Jwt.sign(
+            { email: user.email, _id: user._id, role: user.role, jti: uuidv4() },
+            process.env.JWT_KEY,
+            { expiresIn: '30m' } 
+        );
+
         localEmmiter.emit('sendEmail', { 
-            to: email, 
+            to: user.email, 
             subject: "OTP for Account Verification", 
             content: htmlOtpTemp(otp) 
         });
-        
-        const safeUser = {
-            _id: user._id,
-            email: user.email,
-            userName: user.userName,
-            name: user.name,
-            role: user.role,
-            createdAt: user.createdAt
-        };
-
+    
         res.status(201).json({
             status: httpStatus.SUCCESS,
-            data: safeUser,
-            message: "Registration successful. Please check your email for verification OTP."
+            message: "Registration successful. Please verify your email.",
+            data: {
+                user: {
+                    _id: user._id,
+                    email: user.email,
+                    userName: user.userName,
+                    role: user.role
+                },
+                token: token 
+            }
         });
     
     } catch (err) {
         if (err.code === 11000) {
             const errorMessage = process.env.NODE_ENV === 'production'
-                ? "Registration failed. Please try again with different information."
-                : `Duplicate field: ${Object.keys(err.keyValue)[0]}`;
-                
+                ? "Registration failed. Please review your information."
+                : `Duplicate field error: ${Object.keys(err.keyValue)[0]}`;
             return next(new AppError(errorMessage, 400, httpStatus.FAIL));
         }
-        
-        console.error('Registration error:', err);
-        return next(new AppError("Registration failed due to server error", 500, httpStatus.ERROR));
+        next(err);
     }
 });
 const login = asyncWrapper(async (req, res, next) => {
@@ -399,9 +389,9 @@ const restoreDeletedAccount = asyncWrapper(async (req, res, next) => {
         status: httpStatus.SUCCESS,
         message: "Your account has been restored successfully",
         data: {
-            _id: user._id,
-            email: user.email,
-            userName: user.userName
+            _id: restored._id,     
+            email: restored.email,   
+            userName: restored.userName 
         }
     });
 });

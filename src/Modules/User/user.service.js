@@ -13,7 +13,23 @@ const getAllUsersService = async () => {
 const getUserByIdService = async (id) => {
     return await User.findById(id).lean();
 };
+const findUserByService = async (query) => {
+   
+    if (query.id && !query.email && !query.phoneNumber && !query.userName && !query.ssn) {
+        return await User.findById(query.id);
+    }
 
+    const searchConditions = [];
+ 
+    if (query.email) searchConditions.push({ email: query.email });
+    if (query.phoneNumber) searchConditions.push({ phoneNumber: query.phoneNumber });
+    if (query.userName) searchConditions.push({ userName: query.userName });
+    if (query.ssn) searchConditions.push({ ssn: query.ssn });
+    
+    if (searchConditions.length === 0) return null;
+    
+    return await User.findOne({ $or: searchConditions });
+};
 const registerService = async (newUserData) => {
     const user = await User.create(newUserData);
     const cleanUser = await User.findById(user._id, {
@@ -125,5 +141,6 @@ export {
     deleteUserService,
     forgotPasswordService,
     resetPasswordService,
-    restoreDeletedUserService
+    restoreDeletedUserService,
+    findUserByService
 };

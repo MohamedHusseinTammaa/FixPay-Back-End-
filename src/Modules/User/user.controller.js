@@ -8,15 +8,15 @@ import * as httpStatus from "../../Utils/Http/httpStatusText.js";
 import * as httpMessage from "../../Utils/Http/HttpDataText.js";
 import { AppError } from "../../Utils/Errors/AppError.js";
 import * as Services from "./user.service.js";
-import { generateHash, CompareHash } from '../../Utils/Encrypt/hashing.js';
-import { OtpTypesEnum, Roles } from '../../Utils/enums/usersRoles.js';
-import { localEmmiter, htmlOtpTemp, htmlResetPasswordOtpTemp } from '../../Utils/Services/sendEmail.service.js';
-import blackListedTokenModel from '../../Models/blackListedToken.model.js';
-import { v4 as uuidv4 } from 'uuid';
 import { customAlphabet } from "nanoid";
-import cloudinary from "../../Utils/cloud/cloudinary.js";
-import fs from "fs";
-const generateOtp = customAlphabet('0123456789', 6);
+import { generateHash } from '../../Utils/Encrypt/hashing.js'
+import { OtpTypesEnum, Roles } from '../../Utils/enums/usersRoles.js'
+import { localEmmiter } from '../../Utils/Services/sendEmail.service.js'
+import { htmlOtpTemp } from '../../Utils/Services/sendEmail.service.js'
+import blackListedTokenModel from '../../Models/blackListedToken.model.js'
+import { v4 as uuidv4 } from 'uuid';
+import { CompareHash } from '../../Utils/Encrypt/hashing.js'
+const generateOtp = customAlphabet('0123456789', 6)
 
 const getAllUsers = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
@@ -56,25 +56,28 @@ const register = asyncWrapper(async (req, res, next) => {
     if (!errors.isEmpty()) {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
-
-    // Safer destructuring approach
     const { name, userName, dateOfBirth, gender, phoneNumber, email, password, role, avatar, ssn, address } = req.body;
+    if (await User.findOne({ email })) {
+        return next(new AppError("the email is already registered", 409, httpStatus.FAIL))
+    }
+    if (await User.findOne({ userName })) {
+        return next(new AppError("the userName is exist try another one", 409, httpStatus.FAIL))
+    }
+    if (await User.findOne({ ssn })) {
+        return next(new AppError("the SSN is exist", 409, httpStatus.FAIL))
+    }
     if (role === Roles.worker && !ssn) {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, "worker must add his ssn"));
     }
-
     let parsedDateOfBirth = dateOfBirth;
     if (dateOfBirth) {
         const [day, month, year] = dateOfBirth.split("-");
         parsedDateOfBirth = new Date(year, month - 1, day);
     }
-
     const hashedPassword = await bcrypt.hash(password, 10);
-    const otp = generateOtp();
-    const hashOtp = generateHash(otp);
-
-    console.log('📧 Registration OTP:', otp);
-
+    const otp = generateOtp()
+    const hashOtp = generateHash(otp)
+    console.log(otp);
     const confirmationOtp = {
         value: hashOtp,
         expiresAt: new Date(Date.now() + 600000),
@@ -102,20 +105,11 @@ const register = asyncWrapper(async (req, res, next) => {
         },
         otp: confirmationOtp
     });
-
-    try {
-        const user = await Services.registerService(newUser);
-        res.status(201).json({
-            status: httpStatus.SUCCESS,
-            data: user
-        });
-    } catch (err) {
-        if (err.code === 11000) {
-
-            return next(new AppError("the email is already registered", 400, httpStatus.FAIL))
-        }
-        next(err);
-    }
+    const user = await Services.registerService(newUser);
+    res.status(201).json({
+        status: httpStatus.SUCCESS,
+        data: user
+    })
     localEmmiter.emit('sendEmail', { to: email, subject: "OTP for sign Up", content: htmlOtpTemp(otp) })
 });
 
@@ -126,22 +120,14 @@ const login = asyncWrapper(async (req, res, next) => {
         return next(new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array()));
     }
     const user = await Services.loginService(email);
-    console.log({ user })
     if (!user) {
-        console.log("not found");
-
+        return next(new AppError("email and password doesn't match", 400, httpStatus.FAIL));
     }
 
     const passwordMatched = await bcrypt.compare(password, user.password);
 
     if (passwordMatched) {
-        const token = Jwt.sign(
-            { email: user.email, _id: user._id, role: user.role, jti: uuidv4() },
-            process.env.JWT_KEY,
-            { expiresIn: '30m' } 
-        );
-
-
+        const token = Jwt.sign({ email: user.email, id: user.id, role: user.role, jti: uuidv4() }, process.env.JWT_KEY);
         return res.status(200).json({
             status: httpStatus.SUCCESS,
             data: user.email,
@@ -157,7 +143,6 @@ const login = asyncWrapper(async (req, res, next) => {
         details: null
     });
 });
-
 const confirmEmail = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -166,7 +151,7 @@ const confirmEmail = asyncWrapper(async (req, res, next) => {
         );
     }
     const { otp } = req.body
-    const user = await User.findById(req.currentUser._id)
+    const user = await User.findById(req.currentUser.id)
     const otpValue = user.otp?.value
 
     console.log({ user });
@@ -250,96 +235,6 @@ const deleteUser = asyncWrapper(async (req, res, next) => {
     });
 });
 
-const forgotPassword = asyncWrapper(async (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return next(
-            new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
-        );
-    }
-
-    const { email } = req.body;
-
-    const { resetOtp, user } = await Services.forgotPasswordService(email);
-
-    if (!user) {
-        return res.status(200).json({
-            status: httpStatus.SUCCESS,
-            message: "If the email exists, a reset OTP has been sent"
-        });
-    }
-
-    console.log('🔑 Reset Password OTP:', resetOtp);
-
-    localEmmiter.emit('sendEmail', {
-        to: email,
-        subject: "إعادة تعيين كلمة المرور - Password Reset OTP",
-        content: htmlResetPasswordOtpTemp(resetOtp)
-    });
-
-    res.status(200).json({
-        status: httpStatus.SUCCESS,
-        message: "If the email exists, a reset OTP has been sent"
-    });
-});
-
-const resetPassword = asyncWrapper(async (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return next(
-            new AppError(httpMessage.BAD_REQUEST, 400, httpStatus.FAIL, errors.array())
-        );
-    }
-
-    const { email, otp, newPassword } = req.body;
-
-    if (!email || !otp || !newPassword) {
-        return next(new AppError("Email, OTP and new password are required", 400, httpStatus.FAIL));
-    }
-
-    try {
-        await Services.resetPasswordService(email, otp, newPassword);
-
-        res.status(200).json({
-            status: httpStatus.SUCCESS,
-            message: "Password reset successfully"
-        });
-    } catch (error) {
-        return next(new AppError(error.message, 400, httpStatus.FAIL));
-    }
-});
-
-
-
-
-const profileImage = asyncWrapper(async (req, res, next) => {
-    if (!req.file) {
-        return next(new AppError("No file uploaded", 400, httpStatus.FAIL));
-    }
-
-    const localFilePath = req.file.path;
-    const result = await cloudinary.uploader.upload(localFilePath, {
-        folder: `FixPay/users/${req.currentUser._id}`
-
-    });
-
-    //  fs.unlink(localFilePath, () => {});
-
-    console.log(result.secure_url);
-
-    const user = await User.findByIdAndUpdate(
-        req.currentUser._id,
-        { avatar: result.secure_url },
-        { new: true }
-    );
-    
-    return res.status(200).json({
-        message: "Profile image updated successfully",
-        file: user
-    });
-});
-
-
 export {
     getAllUsers,
     getUserById,
@@ -348,8 +243,5 @@ export {
     login,
     deleteUser,
     confirmEmail,
-    logout,
-    forgotPassword,
-    resetPassword,
-    profileImage
+    logout
 };

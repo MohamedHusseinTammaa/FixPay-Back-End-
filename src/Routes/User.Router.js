@@ -19,7 +19,9 @@ import {
     resetPassword,
     resendResetPasswordOtp,
     profileImage,
-    restoreDeletedAccount
+    restoreDeletedAccount,
+    googleLogin,
+    completeProfile
 } from "../Modules/User/user.controller.js";
 
 const router = Router();
@@ -29,7 +31,8 @@ router.get("/", verifyToken, getAllUsers);
 router.get("/:id", verifyToken, getUserById);
 router.patch("/:id", verifyToken, editUser);
 router.delete("/:id", verifyToken, deleteUser);
-
+router.post("/google", googleLogin );
+router.post('/completeProfile',verifyToken,completeProfile)
 router.post("/register", normalizeAuthFields, checkSchema(registerSchema), register);
 router.post("/login", normalizeAuthFields, checkSchema(loginSchema), login);
 router.post("/logout", verifyToken, logout);

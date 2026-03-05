@@ -17,11 +17,7 @@ const usersSchema = new mongoose.Schema({
     gender: {
         type: Boolean // false = male, true = female
     },
-    phoneNumber: {
-        type: String,
-        unique: true
-        
-    },
+    
     email: {
         type: String,
         unique: true,
@@ -89,7 +85,17 @@ const usersSchema = new mongoose.Schema({
     deleted:{
         type :Boolean,
         default:false
-    }
+    },
+    phoneNumber: {
+        type: String,
+        unique: true,
+        sparse: true 
+    },
+    googleId: { 
+        type: String,
+        unique: true,
+        sparse: true 
+    },
 
 });
 

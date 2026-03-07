@@ -96,6 +96,18 @@ const usersSchema = new mongoose.Schema({
         unique: true,
         sparse: true 
     },
+     identityVerification: {
+        status: {
+            type: String,
+            enum: ["unverified", "pending", "verified", "failed"],
+            default: "unverified"
+        },
+        similarity:  { type: Number },
+        confidence:  { type: String },
+        liveness:    { type: Boolean },
+        verifiedAt:  { type: Date },
+        failReason:  { type: String },
+    }
 
 });
 

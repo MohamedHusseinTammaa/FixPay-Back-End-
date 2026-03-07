@@ -19,7 +19,68 @@ import fs from "fs";
 import { ServiceErrorsEnum } from "../../Utils/Errors/errormessages/UserServiceErrors.js";
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
+import axios    from "axios";
+import FormData from "form-data";
 const generateOtp = customAlphabet('0123456789', 6);
+const PYTHON_API_URL = process.env.PYTHON_API_URL ?? "http://localhost:5000";
+const verifyIdentity = asyncWrapper(async (req, res, next) => {
+    const idFile   = req.files?.["id_image"]?.[0];
+    const liveFile = req.files?.["live_image"]?.[0];
+
+    if (!idFile)   return next(new AppError("Missing field: id_image",   400, httpStatus.FAIL));
+    if (!liveFile) return next(new AppError("Missing field: live_image", 400, httpStatus.FAIL));
+
+    // ── forward to Python API ────────────────────────────────────────────────
+    let result;
+    try {
+        const form = new FormData();
+        form.append("id_image",   idFile.buffer,   { filename: idFile.originalname,   contentType: idFile.mimetype });
+        form.append("live_image", liveFile.buffer, { filename: liveFile.originalname, contentType: liveFile.mimetype });
+
+        const { data } = await axios.post(`${PYTHON_API_URL}/verify`, form, {
+            headers: form.getHeaders(),
+            timeout: 30_000,
+        });
+        result = data;
+    } catch (err) {
+        const msg = err.code === "ECONNREFUSED"
+            ? "Verification service is not running"
+            : err.code === "ECONNABORTED"
+            ? "Verification service timed out"
+            : err.response?.data?.error ?? "Verification service error";
+
+        return next(new AppError(msg, 503, httpStatus.FAIL));
+    }
+
+    // ── save result to DB ────────────────────────────────────────────────────
+    const updateData = result.match
+        ? {
+            "identityVerification.status":     "verified",
+            "identityVerification.similarity":  result.similarity,
+            "identityVerification.confidence":  result.confidence,
+            "identityVerification.liveness":    result.liveness,
+            "identityVerification.verifiedAt":  new Date(),
+            "identityVerification.failReason":  null,
+          }
+        : {
+            "identityVerification.status":    "failed",
+            "identityVerification.similarity": result.similarity,
+            "identityVerification.liveness":   result.liveness,
+            "identityVerification.failReason": "Face does not match ID",
+          };
+
+    await User.findByIdAndUpdate(req.currentUser._id, updateData);
+
+    return res.status(200).json({
+        status:     httpStatus.SUCCESS,
+        match:      result.match,
+        similarity: result.similarity,
+        confidence: result.confidence,
+        liveness:   result.liveness,
+        message:    result.match ? "Identity verified successfully" : "Identity verification failed",
+    });
+});
+
 const googleClient = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
 const googleLogin = asyncWrapper(async (req, res, next) => {
     const { token } = req.body;
@@ -729,5 +790,6 @@ export {
     profileImage,
     restoreDeletedAccount,
     googleLogin,
-    completeProfile
+    completeProfile,
+    verifyIdentity 
 };

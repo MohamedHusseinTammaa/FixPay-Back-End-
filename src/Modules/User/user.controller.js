@@ -33,6 +33,10 @@ const verifyIdentity = asyncWrapper(async (req, res, next) => {
     const id_image_buffer = id_image[0].buffer;
     const live_image_buffer = live_image[0].buffer;
 
+    if (id_image_buffer.equals(live_image_buffer)) {
+        return next(new AppError("Both id_image and live_image cannot be the same image", 400));
+    }
+
     // Fetch user from DB
     const user = await User.findById(req.currentUser._id).select("+ssn +dateOfBirth");
     if (!user) return next(new AppError("User not found", 404));
@@ -923,6 +927,28 @@ const reviewIdentityVerification = asyncWrapper(async (req, res, next) => {
     });
 });
 
+const getUserAiResult = asyncWrapper(async (req, res, next) => {
+    if (req.currentUser.role !== Roles.admin) {
+        return next(new AppError("You do not have permission to perform this action", 403, httpStatus.FAIL));
+    }
+
+    const { id } = req.params;
+    const user = await User.findById(id).select("identityVerification");
+    if (!user) {
+        return next(new AppError("User not found", 404, httpStatus.FAIL));
+    }
+
+    const resultImage = user.identityVerification?.resultImage;
+    if (!resultImage) {
+        return next(new AppError("AI result image not found for this user", 404, httpStatus.FAIL));
+    }
+
+    res.status(200).json({
+        status: httpStatus.SUCCESS,
+        data: { resultImage }
+    });
+});
+
 export {
     getAllUsers,
     getUserById,
@@ -941,5 +967,6 @@ export {
     completeProfile,
     verifyIdentity,
     suspendUser,
-    reviewIdentityVerification
+    reviewIdentityVerification,
+    getUserAiResult
 };
